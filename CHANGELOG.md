@@ -9,6 +9,18 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19h] - 2026-07-19
+
+### Fixed
+- Registered Settings as a tile inside **User Programs** instead of rendering
+  the page body as a standalone Settings section.
+- Moved log and inactive-history cleanup into their corresponding settings
+  sections and clarified that log cleanup affects this plugin only.
+- Resolved `/mnt/diskN` through Unraid's `disks.ini` before checking the real
+  device transport, so valid internal array disks are no longer filtered out.
+- Excluded named Unraid cache/pool mountpoints and their ZFS child datasets from
+  the supported-volume tree.
+
 ## [2026.07.19g] - 2026-07-19
 
 ### Added

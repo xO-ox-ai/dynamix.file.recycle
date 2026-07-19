@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19g` architecture and its conservative
+This document describes the `2026.07.19h` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -44,7 +44,7 @@ value. The current script also removes legacy per-row controls, so an upgrade
 cannot leave an old cached trash icon beside item names.
 
 Settings and recycle details are separate static page shells. Settings is
-registered under User Programs (`Menu="Settings"`); recycle details is under
+registered as a tile under User Programs (`Menu="Utilities"`); recycle details is under
 Tools -> Disk Utilities. Both load storage state through `api.php` after the
 page has rendered, so backend failures remain visible as inline errors.
 

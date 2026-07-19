@@ -85,8 +85,7 @@
     padding: 18px 0;
 }
 
-.recycle-settings-actions .recycle-danger { border-color: #d9534f; }
-.recycle-action-help { margin: 0 0 5px; }
+.recycle-settings .recycle-danger { border-color: #d9534f; }
 
 @media (max-width: 720px) {
     .recycle-settings-section dl { grid-template-columns: 1fr; gap: 6px; }

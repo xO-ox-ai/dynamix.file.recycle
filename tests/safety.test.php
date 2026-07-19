@@ -41,6 +41,29 @@ checkSafety($fs->lexicalNormalise('/../../etc/passwd') === null, 'Traversal abov
 checkSafety($fs->lexicalNormalise('mnt/disk1/file') === null, 'Relative path was accepted');
 checkSafety($fs->lexicalNormalise("/mnt/disk1/a\0b") === null, 'NUL-containing path was accepted');
 
+$diskStateFile = sys_get_temp_dir() . '/dynamix-file-recycle-disks-' . bin2hex(random_bytes(4)) . '.ini';
+file_put_contents($diskStateFile, <<<INI
+[disk1]
+name="disk1"
+device="sda"
+fsMountpoint="/mnt/disk1"
+
+[fastpool]
+name="fastpool"
+device="nvme0n1"
+fsMountpoint="/mnt/fastpool"
+INI);
+$stateAwareFs = new FsInspector([$diskStateFile]);
+$poolReason = $stateAwareFs->unsupportedPathReason('/mnt/fastpool/appdata');
+checkSafety($poolReason !== null && str_contains($poolReason, 'Cache and pool'), 'Named Unraid pool was not rejected');
+$arrayDeviceMethod = new ReflectionMethod(FsInspector::class, 'unraidArrayBackingDevice');
+$arrayDeviceMethod->setAccessible(true);
+checkSafety(
+    $arrayDeviceMethod->invoke($stateAwareFs, '/mnt/disk1') === '/dev/sda',
+    'Unraid diskN did not resolve to its physical disks.ini device'
+);
+@unlink($diskStateFile);
+
 $cfg = new Config(
     $root . '/tests/.missing.cfg',
     $root . '/source/dynamix.file.recycle/dynamix.file.recycle.cfg.default'

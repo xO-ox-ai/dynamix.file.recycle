@@ -58,6 +58,9 @@ foreach (['/boot', '/mnt/user', '/mnt/user0', '/mnt/cache', '/mnt/disks', '/mnt/
 foreach (['lsblk', 'zpool', "'usb'", "'RM'"] as $topologySignal) {
     check(str_contains($fs, $topologySignal), "external-storage signal is missing: $topologySignal");
 }
+check(str_contains($fs, "'/var/local/emhttp/disks.ini'"), 'Unraid array/pool state is not consulted');
+check(str_contains($fs, 'unraidArrayBackingDevice'), 'diskN is not mapped to its assigned physical device');
+check(str_contains($fs, 'unraidPoolRoots'), 'named Unraid cache/pool roots are not rejected');
 foreach (['unsupported_boot_device', 'unsupported_unassigned_device', 'unsupported_usb_storage', 'unverified_storage_topology'] as $errorCode) {
     check(str_contains($api, "'$errorCode'"), "public device-scope error code is missing: $errorCode");
 }
@@ -83,7 +86,7 @@ check(str_contains($settings, 'DynamixFileRecycleSettingsRuntime'), 'settings pa
 check(str_contains($settings, 'javascript/settings.js'), 'settings page does not load its API client');
 check(str_contains($settings, 'include/I18n.php'), 'settings page does not load its lightweight localization helper');
 check(str_contains($settings, "'i18n' => \$recycleSettingsCatalog"), 'settings page does not embed its own localization catalog');
-check(str_contains($settings, 'Menu="Settings:30"'), 'settings page is not registered under User Programs');
+check(str_contains($settings, 'Menu="Utilities:30"'), 'settings tile is not registered inside User Programs');
 check(!str_contains($settings, 'DiskUtilities'), 'settings page is still duplicated under Disk Utilities');
 check(str_contains($settings, 'Title="Dynamix File Recycle Bin"'), 'plugin title is not a translatable English key');
 check(str_contains($settings, 'Icon="recycle"'), 'plugin tile does not use a valid Unraid icon');
@@ -130,6 +133,8 @@ check(str_contains($settingsJs, "request('config_save'"), 'settings are not save
 check(str_contains($settingsJs, "'clear_logs'"), 'settings do not expose log cleanup');
 check(str_contains($settingsJs, "'clear_history'"), 'settings do not expose inactive-history cleanup');
 check(str_contains($settingsJs, 'volume.hierarchy'), 'settings do not render structured volume hierarchy');
+check(strpos($settings, 'id="recycle-clear-logs"') < strpos($settings, 'data-i18n="history"'), 'log cleanup is not inside the Logging section');
+check(strpos($settings, 'id="recycle-clear-history"') < strpos($settings, 'data-i18n="maintenance"'), 'history cleanup is not inside the History section');
 check(str_contains($api, "'supported_volumes' => \$supportedVolumes"), 'settings API does not return validated volumes');
 check(str_contains($api, "case 'clear_logs'"), 'log cleanup API action is missing');
 check(str_contains($api, "case 'clear_history'"), 'history cleanup API action is missing');

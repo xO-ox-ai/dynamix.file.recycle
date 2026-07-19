@@ -1,4 +1,4 @@
-Menu="Settings:30"
+Menu="Utilities:30"
 Title="Dynamix File Recycle Bin"
 Icon="recycle"
 Tag="recycle"
@@ -24,11 +24,13 @@ foreach ([
     'logLevel' => 'settings.log_level',
     'logRetention' => 'settings.log_retention',
     'logSize' => 'settings.log_size',
+    'logActions' => 'settings.log_actions',
     'history' => 'settings.history',
     'recordHistory' => 'settings.record_history',
     'historyHint' => 'settings.history_hint',
     'historyRetention' => 'settings.history_retention',
     'historyRetentionHint' => 'settings.history_retention_hint',
+    'historyActions' => 'settings.history_actions',
     'maintenance' => 'settings.maintenance',
     'maintenanceHint' => 'settings.maintenance_hint',
     'ageDays' => 'settings.age_days',
@@ -130,6 +132,11 @@ $recycleSettingsRuntime = [
         <dd><input id="recycle-log-retention" type="number" name="log_retention_days" min="0" max="3650"></dd>
         <dt><label for="recycle-log-size" data-i18n="logSize">Log size cap (MiB)</label></dt>
         <dd><input id="recycle-log-size" type="number" name="log_max_size_mib" min="1" max="100"></dd>
+        <dt data-i18n="logActions">Plugin log cleanup</dt>
+        <dd>
+          <button type="button" id="recycle-clear-logs"><i class="fa fa-trash" aria-hidden="true"></i> <span data-i18n="clearLogs">Clear this plugin's logs</span></button>
+          <span class="hint" data-i18n="clearLogsHint">Clear only this plugin's runtime, persistent audit and SQLite event logs.</span>
+        </dd>
       </dl>
     </section>
 
@@ -145,6 +152,11 @@ $recycleSettingsRuntime = [
         <dd>
           <input id="recycle-history-retention" type="number" name="history_retention_days" min="0" max="36500">
           <span class="hint" data-i18n="historyRetentionHint">0 keeps restored and purged audit rows indefinitely.</span>
+        </dd>
+        <dt data-i18n="historyActions">History cleanup</dt>
+        <dd>
+          <button type="button" id="recycle-clear-history" class="recycle-danger"><i class="fa fa-history" aria-hidden="true"></i> <span data-i18n="clearHistory">Clear deleted-item history</span></button>
+          <span class="hint" data-i18n="clearHistoryHint">Deletes only restored and purged history rows. Active recycle items and files are preserved.</span>
         </dd>
       </dl>
     </section>
@@ -216,11 +228,7 @@ $recycleSettingsRuntime = [
     <div class="recycle-settings-actions">
       <button type="submit"><i class="fa fa-save" aria-hidden="true"></i> <span data-i18n="save">Save</span></button>
       <button type="button" id="recycle-open-bin"><i class="fa fa-folder-open" aria-hidden="true"></i> <span data-i18n="openBin">Open Recycle Bin</span></button>
-      <button type="button" id="recycle-clear-logs"><i class="fa fa-file-text-o" aria-hidden="true"></i> <span data-i18n="clearLogs">Clear logs</span></button>
-      <button type="button" id="recycle-clear-history" class="recycle-danger"><i class="fa fa-history" aria-hidden="true"></i> <span data-i18n="clearHistory">Clear deleted-item history</span></button>
     </div>
-    <p class="hint recycle-action-help"><span data-i18n="clearLogsHint">Clear runtime, persistent audit and SQLite event logs.</span></p>
-    <p class="hint recycle-action-help"><span data-i18n="clearHistoryHint">Deletes only restored and purged history rows. Active recycle items and files are preserved.</span></p>
   </form>
 </div>
 

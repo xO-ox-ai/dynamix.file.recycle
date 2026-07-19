@@ -27,6 +27,12 @@ final class FsInspector
     private array $statCache = [];
     /** @var array<string,string|null> */
     private array $topologyCache = [];
+    /** @var array<string,array<string,string>>|null */
+    private ?array $unraidDisks = null;
+    /** @var list<string>|null */
+    private ?array $unraidPoolRoots = null;
+    /** @var list<string> */
+    private array $diskStateFiles;
 
     public const RECYCLE_NAME = '.RecycleBin';
     /** @var list<string> */
@@ -40,6 +46,15 @@ final class FsInspector
         '/mnt/rootshare',
         '/mnt/addons',
     ];
+
+    /** @param list<string>|null $diskStateFiles */
+    public function __construct(?array $diskStateFiles = null)
+    {
+        $this->diskStateFiles = $diskStateFiles ?? [
+            '/var/local/emhttp/disks.ini',
+            '/usr/local/emhttp/state/disks.ini',
+        ];
+    }
 
     /**
      * Resolve an absolute path to {volume, fs, relative}.
@@ -98,6 +113,11 @@ final class FsInspector
                     '/mnt/remotes' => 'Remote filesystem paths are not supported in this release.',
                     default => 'This Unraid virtual or system-managed path is not supported in this release.',
                 };
+            }
+        }
+        foreach ($this->unraidPoolRoots() as $root) {
+            if ($lexical === $root || str_starts_with($lexical, $root . '/')) {
+                return 'Cache and pool paths are not supported in this release.';
             }
         }
         if (preg_match('#^/mnt/cache[^/]*(?:/|$)#', $lexical)) {
@@ -259,6 +279,14 @@ final class FsInspector
                 'hierarchy' => ['Disk ' . $match[1]],
             ];
         }
+        if (preg_match('#^/mnt/disk(\d+)/(.+)$#', $canonical, $match)) {
+            $children = array_values(array_filter(explode('/', $match[2]), 'strlen'));
+            return [
+                'kind' => 'array',
+                'label' => end($children) ?: basename($canonical),
+                'hierarchy' => array_merge(['Disk ' . $match[1]], $children),
+            ];
+        }
         $dataset = $this->zfsMounts()[$canonical] ?? '';
         if ($dataset === '') {
             return null;
@@ -303,7 +331,13 @@ final class FsInspector
             return $this->topologyCache[$key];
         }
         $devices = [];
-        if ($filesystem === 'zfs') {
+        if (preg_match('#^/mnt/disk\d+$#', $volume)) {
+            $device = $this->unraidArrayBackingDevice($volume);
+            if ($device === null) {
+                return $this->topologyCache[$key] = 'The Unraid array disk backing device could not be verified.';
+            }
+            $devices[$device] = true;
+        } elseif ($filesystem === 'zfs') {
             $dataset = $this->zfsMounts()[$volume] ?? '';
             $pool = explode('/', $dataset, 2)[0] ?? '';
             if ($pool === '') {
@@ -453,6 +487,72 @@ final class FsInspector
         $name = escapeshellarg($name);
         $out = @shell_exec('command -v ' . $name . ' 2>/dev/null');
         return $out !== null && trim($out) !== '';
+    }
+
+    /** @return array<string,array<string,string>> */
+    private function unraidDiskState(): array
+    {
+        if ($this->unraidDisks !== null) {
+            return $this->unraidDisks;
+        }
+        $this->unraidDisks = [];
+        foreach ($this->diskStateFiles as $file) {
+            if (!is_readable($file)) continue;
+            $parsed = @parse_ini_file($file, true, INI_SCANNER_RAW);
+            if (!is_array($parsed)) continue;
+            foreach ($parsed as $section => $values) {
+                if (is_string($section) && is_array($values)) {
+                    $normalised = [];
+                    foreach ($values as $field => $value) {
+                        if (is_string($field) && is_scalar($value)) {
+                            $normalised[$field] = (string) $value;
+                        }
+                    }
+                    $this->unraidDisks[$section] = $normalised;
+                }
+            }
+            if ($this->unraidDisks !== []) break;
+        }
+        return $this->unraidDisks;
+    }
+
+    private function unraidArrayBackingDevice(string $volume): ?string
+    {
+        $name = basename($volume);
+        $state = $this->unraidDiskState();
+        $entry = $state[$name] ?? null;
+        if (!is_array($entry)) {
+            foreach ($state as $candidate) {
+                if (($candidate['name'] ?? '') === $name) {
+                    $entry = $candidate;
+                    break;
+                }
+            }
+        }
+        $device = is_array($entry) ? basename(trim((string) ($entry['device'] ?? ''))) : '';
+        if ($device === '' || preg_match('/\A[A-Za-z0-9._-]+\z/', $device) !== 1) {
+            return null;
+        }
+        return '/dev/' . $device;
+    }
+
+    /** @return list<string> */
+    private function unraidPoolRoots(): array
+    {
+        if ($this->unraidPoolRoots !== null) {
+            return $this->unraidPoolRoots;
+        }
+        $roots = [];
+        foreach ($this->unraidDiskState() as $section => $entry) {
+            $name = (string) ($entry['name'] ?? $section);
+            if (preg_match('/\A(?:disk\d+|parity\d*|flash)\z/i', $name)) continue;
+            $mountpoint = $this->lexicalNormalise((string) ($entry['fsMountpoint'] ?? ''));
+            if ($mountpoint === null || preg_match('#\A/mnt/[^/]+\z#', $mountpoint) !== 1) continue;
+            $roots[$mountpoint] = true;
+        }
+        $this->unraidPoolRoots = array_keys($roots);
+        usort($this->unraidPoolRoots, fn(string $a, string $b): int => strlen($b) <=> strlen($a));
+        return $this->unraidPoolRoots;
     }
 
     private function mountSource(string $mountpoint): ?string

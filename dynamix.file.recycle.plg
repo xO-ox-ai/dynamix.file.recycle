@@ -17,10 +17,10 @@
 -->
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "dynamix.file.recycle">
-  <!ENTITY author    "dynamix-file-recycle">
+  <!ENTITY author    "xO-ox-ai">
   <!ENTITY version   "1.0.0">
   <!ENTITY launch    "/Tools/RecycleBin">
-  <!ENTITY repo      "https://github.com/dynamix-file-recycle/dynamix.file.recycle">
+  <!ENTITY repo      "https://github.com/xO-ox-ai/dynamix.file.recycle">
   <!ENTITY pluginURL "&repo;/releases/download/v&version;/dynamix.file.recycle.plg">
   <!ENTITY package   "&repo;/releases/download/v&version;/dynamix.file.recycle-&version;.txz">
   <!ENTITY min       "7.3.2">

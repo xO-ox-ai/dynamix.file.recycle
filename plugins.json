@@ -1,7 +1,7 @@
 {
   "$schema": "https://ca.unraid.net/schema/plugins.json",
   "name": "Dynamix File Recycle Bin",
-  "author": "dynamix-file-recycle",
+  "author": "xO-ox-ai",
   "category": [
     "Tools"
   ],

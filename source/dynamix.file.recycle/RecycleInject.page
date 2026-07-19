@@ -27,7 +27,8 @@ Link='recycle-runtime-hook'
  */
 
 $pluginRoot = '/plugins/dynamix.file.recycle';
-$bootFile   = __DIR__ . '/include/Bootstrap.php';
+$pluginDir  = '/usr/local/emhttp/plugins/dynamix.file.recycle';
+$bootFile   = $pluginDir . '/include/Bootstrap.php';
 if (!is_file($bootFile)) {
     return; // plugin partially uninstalled; bail silently.
 }
@@ -39,7 +40,7 @@ require_once $bootFile;
 $localeCode = strtolower((string) ($_SESSION['locale'] ?? ($GLOBALS['locale'] ?? 'en_US')));
 if (str_starts_with($localeCode, 'zh')) {
     $catalog = @parse_ini_file(
-        __DIR__ . '/unraid-language/zh_CN/dynamix.file.recycle.txt',
+        $pluginDir . '/unraid-language/zh_CN/dynamix.file.recycle.txt',
         false,
         INI_SCANNER_RAW
     );
@@ -58,7 +59,7 @@ try {
     return;
 }
 $enabled = $cfg->getEnabled();
-$versionFile = __DIR__ . '/VERSION';
+$versionFile = $pluginDir . '/VERSION';
 $version = is_file($versionFile) ? trim((string) file_get_contents($versionFile)) : 'unknown';
 
 // Read CSRF token from Unraid state. Prefer $var (already-loaded dynamix

@@ -9,6 +9,15 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19e] - 2026-07-19
+
+### Fixed
+- Replaced every runtime `__DIR__` reference in `.page` files with the
+  installed plugin's absolute path. Unraid evaluates page bodies from
+  `DefaultPageLayout`, so `__DIR__` previously resolved outside the plugin and
+  prevented settings, localization and DFM assets from loading.
+- Added a contract check that rejects `__DIR__` in every Unraid `.page` file.
+
 ## [2026.07.19d] - 2026-07-19
 
 ### Fixed

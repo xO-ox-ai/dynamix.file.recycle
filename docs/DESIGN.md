@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19d` architecture and its conservative
+This document describes the `2026.07.19e` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model

@@ -86,8 +86,22 @@ $recyclePage = source('source/dynamix.file.recycle/RecycleBin.page');
 check(!preg_match('/\AMenu=/m', $recyclePage), 'Recycle Bin helper route is still exposed as a second menu tile');
 check(!str_contains($recyclePage, 'assertAdmin'), 'Recycle Bin page still relies on a non-portable session shape');
 
+foreach (glob($root . '/source/dynamix.file.recycle/*.page') ?: [] as $pageFile) {
+    $pageSource = (string) file_get_contents($pageFile);
+    check(
+        !str_contains($pageSource, '__DIR__'),
+        basename($pageFile) . ' uses __DIR__, which resolves to DefaultPageLayout when Unraid evals .page content'
+    );
+}
+check(
+    substr_count($settings, '/usr/local/emhttp/plugins/dynamix.file.recycle/') >= 1
+        && substr_count($recyclePage, '/usr/local/emhttp/plugins/dynamix.file.recycle/') >= 1,
+    'runtime pages do not use the proven absolute plugin path'
+);
+
 $inject = source('source/dynamix.file.recycle/RecycleInject.page');
 check(str_contains($inject, "parse_ini_file("), 'plugin-local Unraid menu translations are not loaded');
+check(str_contains($inject, "\$pluginDir  = '/usr/local/emhttp/plugins/dynamix.file.recycle'"), 'runtime hook does not use the absolute plugin directory');
 check(!str_contains($inject, 'parse_plugin('), 'menu translation still depends on Unraid global plugin cache state');
 check(str_contains($inject, "Link='recycle-runtime-hook'"), 'runtime hook can appear as an unwanted navigation button');
 check(substr_count($inject, 'autov(') === 2, 'front-end assets do not use Unraid cache busting');

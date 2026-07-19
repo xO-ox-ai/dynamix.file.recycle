@@ -15,7 +15,7 @@ Icon="recycle"
  * api.php.
  */
 
-require_once __DIR__ . '/include/Bootstrap.php';
+require_once '/usr/local/emhttp/plugins/dynamix.file.recycle/include/Bootstrap.php';
 
 try {
     $c = \DynamixFileRecycle\boot();

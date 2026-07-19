@@ -29,8 +29,6 @@ final class FsInspector
     private array $topologyCache = [];
     /** @var array<string,array<string,string>>|null */
     private ?array $unraidDisks = null;
-    /** @var list<string>|null */
-    private ?array $unraidPoolRoots = null;
     /** @var list<string> */
     private array $diskStateFiles;
 
@@ -113,11 +111,6 @@ final class FsInspector
                     '/mnt/remotes' => 'Remote filesystem paths are not supported in this release.',
                     default => 'This Unraid virtual or system-managed path is not supported in this release.',
                 };
-            }
-        }
-        foreach ($this->unraidPoolRoots() as $root) {
-            if ($lexical === $root || str_starts_with($lexical, $root . '/')) {
-                return 'Cache and pool paths are not supported in this release.';
             }
         }
         if (preg_match('#^/mnt/cache[^/]*(?:/|$)#', $lexical)) {
@@ -534,25 +527,6 @@ final class FsInspector
             return null;
         }
         return '/dev/' . $device;
-    }
-
-    /** @return list<string> */
-    private function unraidPoolRoots(): array
-    {
-        if ($this->unraidPoolRoots !== null) {
-            return $this->unraidPoolRoots;
-        }
-        $roots = [];
-        foreach ($this->unraidDiskState() as $section => $entry) {
-            $name = (string) ($entry['name'] ?? $section);
-            if (preg_match('/\A(?:disk\d+|parity\d*|flash)\z/i', $name)) continue;
-            $mountpoint = $this->lexicalNormalise((string) ($entry['fsMountpoint'] ?? ''));
-            if ($mountpoint === null || preg_match('#\A/mnt/[^/]+\z#', $mountpoint) !== 1) continue;
-            $roots[$mountpoint] = true;
-        }
-        $this->unraidPoolRoots = array_keys($roots);
-        usort($this->unraidPoolRoots, fn(string $a, string $b): int => strlen($b) <=> strlen($a));
-        return $this->unraidPoolRoots;
     }
 
     private function mountSource(string $mountpoint): ?string

@@ -54,8 +54,10 @@ device="nvme0n1"
 fsMountpoint="/mnt/fastpool"
 INI);
 $stateAwareFs = new FsInspector([$diskStateFile]);
-$poolReason = $stateAwareFs->unsupportedPathReason('/mnt/fastpool/appdata');
-checkSafety($poolReason !== null && str_contains($poolReason, 'Cache and pool'), 'Named Unraid pool was not rejected');
+checkSafety(
+    $stateAwareFs->unsupportedPathReason('/mnt/fastpool/appdata') === null,
+    'Independent named storage pool was incorrectly treated as cache'
+);
 $arrayDeviceMethod = new ReflectionMethod(FsInspector::class, 'unraidArrayBackingDevice');
 $arrayDeviceMethod->setAccessible(true);
 checkSafety(

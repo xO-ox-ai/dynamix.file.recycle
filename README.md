@@ -21,7 +21,8 @@ specific reason and advice when any path is unsupported.
 The following are intentionally rejected:
 
 - `/mnt/user` and `/mnt/user0` virtual user-share paths.
-- `/mnt/cache*` and other cache/pool paths.
+- `/mnt/cache*` cache paths. Independently mounted local ZFS pools remain
+  eligible when their backing devices pass the normal safety checks.
 - `/mnt/disks` (Unassigned Devices), `/mnt/remotes`, remote filesystems and
   arbitrary external mounts.
 - `/boot`, including the Unraid boot USB device.

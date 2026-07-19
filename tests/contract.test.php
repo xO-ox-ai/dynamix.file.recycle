@@ -60,7 +60,6 @@ foreach (['lsblk', 'zpool', "'usb'", "'RM'"] as $topologySignal) {
 }
 check(str_contains($fs, "'/var/local/emhttp/disks.ini'"), 'Unraid array/pool state is not consulted');
 check(str_contains($fs, 'unraidArrayBackingDevice'), 'diskN is not mapped to its assigned physical device');
-check(str_contains($fs, 'unraidPoolRoots'), 'named Unraid cache/pool roots are not rejected');
 foreach (['unsupported_boot_device', 'unsupported_unassigned_device', 'unsupported_usb_storage', 'unverified_storage_topology'] as $errorCode) {
     check(str_contains($api, "'$errorCode'"), "public device-scope error code is missing: $errorCode");
 }

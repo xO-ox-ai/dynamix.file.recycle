@@ -9,6 +9,16 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19i] - 2026-07-19
+
+### Fixed
+- Distinguished explicitly unsupported `/mnt/cache*` paths from independent
+  named local storage pools. Verified ZFS volumes such as `/mnt/nvme_system`
+  and their datasets remain eligible.
+- Retained the `disks.ini` array-device mapping from `2026.07.19h`, so internal
+  `/mnt/diskN` volumes are accepted without treating `/dev/mdN` as the physical
+  backing device.
+
 ## [2026.07.19h] - 2026-07-19
 
 ### Fixed

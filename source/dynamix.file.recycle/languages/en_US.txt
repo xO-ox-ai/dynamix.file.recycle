@@ -16,6 +16,13 @@ state.done       = "Done"
 
 confirm.recycle  = "Move this item to the Recycle Bin?"
 
+; Cross-filesystem recycle confirmation (two-step protocol).
+crossfs.title        = "Cross-volume move required"
+crossfs.body         = "This item lives on a different filesystem than the recycle bin. It must be COPIED to the bin and then removed from its original location. This may take a while for large items and cannot be cancelled once started."
+crossfs.file.prompt  = "File"
+crossfs.dir.prompt   = "Directory"
+crossfs.question     = "Proceed with the cross-volume copy?"
+
 done.message     = "Item moved to Recycle Bin."
 error.message    = "Operation failed."
 

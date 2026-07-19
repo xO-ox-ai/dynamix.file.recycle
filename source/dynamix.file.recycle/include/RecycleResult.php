@@ -1,6 +1,13 @@
 <?php
 /**
  * RecycleResult.php — value object returned by Recycler::recycle().
+ *
+ * The $ok flag follows a three-state convention:
+ *
+ *   - $ok === true                     success, file moved
+ *   - $ok === false && needConfirm     cross-fs move detected; caller MUST ask
+ *                                      the user and re-call with confirm=1
+ *   - $ok === false && !needConfirm    hard error
  */
 
 declare(strict_types=1);
@@ -17,6 +24,11 @@ final class RecycleResult
     public ?string $recyclePath;
     public int $size;
     public bool $isDir;
+
+    /** @var bool True when this result represents a "needs user confirmation" precheck response. */
+    public bool $needConfirm = false;
+    public ?string $destPath = null;
+    public ?string $volume = null;
 
     private function __construct(
         bool $ok,
@@ -54,9 +66,34 @@ final class RecycleResult
         return new self(false, $message);
     }
 
+    /**
+     * Build a "needs confirmation" result. The file has NOT been moved yet;
+     * the caller is expected to ask the user and re-issue the call with
+     * confirm=1.
+     */
+    public static function needConfirm(
+        string $path,
+        string $dest,
+        int $size,
+        bool $isDir,
+        string $volume
+    ): self {
+        $r = new self(
+            ok: false,
+            error: null,
+            originalPath: $path,
+            size: $size,
+            isDir: $isDir
+        );
+        $r->needConfirm = true;
+        $r->destPath = $dest;
+        $r->volume = $volume;
+        return $r;
+    }
+
     public function toArray(): array
     {
-        return [
+        $base = [
             'ok'            => $this->ok,
             'error'         => $this->error,
             'item_id'       => $this->itemId,
@@ -66,5 +103,14 @@ final class RecycleResult
             'size'          => $this->size,
             'is_dir'        => $this->isDir,
         ];
+        if ($this->needConfirm) {
+            $base['need_confirm'] = true;
+            $base['cross_fs']     = true;
+            $base['dest_path']    = $this->destPath;
+            $base['volume']       = $this->volume;
+            $base['code']         = 'need_confirm';
+        }
+        return $base;
     }
 }
+

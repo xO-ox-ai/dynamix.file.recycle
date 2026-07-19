@@ -15,6 +15,13 @@ state.done       = "完成"
 
 confirm.recycle  = "确认将此项移入回收站？"
 
+; 跨文件系统回收确认（两步协议）。
+crossfs.title        = "需要跨卷移动"
+crossfs.body         = "此项所在的文件系统与回收站不同。必须先复制到回收站，再从原位置删除。大文件可能耗时较久，且开始后无法中途取消。"
+crossfs.file.prompt  = "文件"
+crossfs.dir.prompt   = "目录"
+crossfs.question     = "确认进行跨卷复制？"
+
 done.message     = "已移入回收站。"
 error.message    = "操作失败。"
 

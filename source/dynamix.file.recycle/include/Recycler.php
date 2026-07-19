@@ -40,7 +40,7 @@ final class Recycler
         $this->cfg = $cfg;
     }
 
-    public function recycle(string $absPath): RecycleResult
+    public function recycle(string $absPath, bool $confirmed = false): RecycleResult
     {
         $canonical = $this->fs->normalise($absPath);
         if ($canonical === null) {
@@ -65,7 +65,6 @@ final class Recycler
         $isDir = is_dir($canonical);
         $originalMeta = [
             'size'      => $isDir ? $this->fs->dirSize($canonical) : (int) $stat['size'],
-            'is_dir'    => $isDir ? 1 : 0,
             'owner_uid' => (int) $stat['uid'],
             'owner_gid' => (int) $stat['gid'],
             'mode'      => (int) ($stat['mode'] & 07777),
@@ -87,8 +86,20 @@ final class Recycler
         $dest = $recycleRoot . '/' . ($relative === '' ? basename($canonical) : $relative);
         $dest = $this->resolveConflict($dest);
 
-        // Decide rename vs copy+rm.
+        // Cross-filesystem check. If we would need a copy+rm (slow, expensive,
+        // and harder to abort), refuse the first call unless the caller has
+        // explicitly confirmed. The front-end uses this to prompt the user.
         $sameFs = $this->fs->sameFilesystem($canonical, $dest);
+        if (!$sameFs && !$confirmed) {
+            return RecycleResult::needConfirm(
+                path: $canonical,
+                dest: $dest,
+                size: $originalMeta['size'],
+                isDir: $isDir,
+                volume: $vol['volume']
+            );
+        }
+
         if ($sameFs) {
             if (!@rename($canonical, $dest)) {
                 return RecycleResult::error('rename() failed: ' . $canonical . ' -> ' . $dest);
@@ -124,13 +135,13 @@ final class Recycler
                 'recycle_path'  => $dest,
                 'original_path' => $canonical,
                 'size'          => $originalMeta['size'],
-                'is_dir'        => $originalMeta['is_dir'],
+                'is_dir'        => $isDir ? 1 : 0,
                 'owner_uid'     => $originalMeta['owner_uid'],
                 'owner_gid'     => $originalMeta['owner_gid'],
                 'mode'          => $originalMeta['mode'],
                 'mtime'         => $originalMeta['mtime'],
                 'deleted_at'    => time(),
-                'meta_json'     => json_encode(['fs' => $vol['fs']], JSON_UNESCAPED_SLASHES),
+                'meta_json'     => json_encode(['fs' => $vol['fs'], 'cross_fs' => !$sameFs], JSON_UNESCAPED_SLASHES),
             ]);
         } catch (\Throwable $e) {
             // The file has already moved; downgrade history failure to warning.
@@ -141,7 +152,13 @@ final class Recycler
         $this->logger->info(
             'recycle',
             $canonical,
-            sprintf('moved to %s (volume=%s)', $dest, $vol['volume'])
+            sprintf(
+                'moved to %s (volume=%s, cross_fs=%d, confirmed=%d)',
+                $dest,
+                $vol['volume'],
+                $sameFs ? 0 : 1,
+                $confirmed ? 1 : 0
+            )
         );
 
         return RecycleResult::ok($id, $token, $canonical, $dest, $originalMeta['size'], $isDir);

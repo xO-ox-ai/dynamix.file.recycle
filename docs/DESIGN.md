@@ -72,7 +72,7 @@ longest-mountpoint-first so the most specific dataset wins when paths nest.
   -> MutationObserver fallback (rule 2.3)
   -> ensureButton(row): idempotent, stable itemId, fixed 28x28 slot (rules 5,6)
   -> document-level event delegation for click + keydown (rule 7)
-  -> click: bump generation -> apiPost('recycle') -> setState machine (rules 8,9)
+  -> click: two-step recycle protocol (see §3.1 below)
 
 [api.php]
   -> Unraid auto_prepend verifies csrf_token (rule: do NOT re-implement CSRF)
@@ -91,6 +91,46 @@ longest-mountpoint-first so the most specific dataset wins when paths nest.
      4. log + history retention sweeps
      5. SQLite VACUUM (optional)
 ```
+
+### 3.1 Two-step recycle protocol (cross-filesystem confirmation)
+
+A recycle operation moves the source into `{volume}/.RecycleBin`. When the
+source and destination share a filesystem, `rename()` is atomic and instant.
+When they don't (e.g. a ZFS dataset's child being moved across a dataset
+boundary, or an XFS file on disk1 whose `.RecycleBin` somehow lives on a
+different fs), the move degrades to a recursive `cp -a` followed by `rm`,
+which is slow and cannot be safely cancelled mid-way.
+
+We never silently take that slow path. Instead the recycle endpoint follows
+a two-step protocol:
+
+```
+CLIENT                          SERVER (api.php?action=recycle)
+  |  POST action=recycle           |
+  |  (no confirm field)            |
+  |------------------------------->|
+  |                                | precheck: sameFilesystem(src,dst)?
+  |                                |   yes -> perform rename(), return 200 ok
+  |                                |   no  -> return 202 {need_confirm, size, ...}
+  |<-------------------------------|
+  |  if 202:                       |
+  |    show confirm dialog         |
+  |    with size + warning         |
+  |  user clicks OK                |
+  |  POST action=recycle           |
+  |       confirm=1                |
+  |------------------------------->|
+  |                                | confirmed=true -> perform cp + rm
+  |                                | return 200 ok (or 4xx on failure)
+  |<-------------------------------|
+```
+
+The first call is therefore **non-mutating** when cross-fs would be required.
+The actual move only happens after the user explicitly opts in. The
+generation counter in the front-end (rule 8) ensures that if the user clicks
+the button again while the dialog is open, stale confirmations cannot
+overwrite a newer state.
+
 
 ## 4. Front-end rules mapping
 

@@ -238,7 +238,10 @@
     }
 
     // ---------- API client -----------------------------------------------
-    function apiPost(payload) {
+    // Returns a Promise that resolves with {status, json}. The caller decides
+    // what to do with non-ok responses; this keeps the two-step recycle
+    // protocol (need_confirm -> confirm=1) clean.
+    function apiRequest(payload) {
         var body = new URLSearchParams();
         body.append('action', payload.action);
         for (var k in payload) {
@@ -258,60 +261,119 @@
             headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
             body: body.toString()
         }).then(function (resp) {
+            // Try to parse JSON regardless of status; some error bodies are JSON.
             return resp.json().then(function (json) {
-                if (!resp.ok || !json.ok) {
-                    var err = new Error(json.error || ('HTTP ' + resp.status));
-                    err.payload = json;
-                    throw err;
-                }
-                return json;
+                return { status: resp.status, json: json };
+            }).catch(function () {
+                return { status: resp.status, json: { ok: false, error: 'HTTP ' + resp.status } };
             });
         });
     }
 
+    function formatBytes(n) {
+        if (!n || n < 0) return '0 B';
+        var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+        var i = Math.floor(Math.log(n) / Math.log(1024));
+        if (i >= units.length) i = units.length - 1;
+        var v = n / Math.pow(1024, i);
+        return (i === 0 ? v.toString() : v.toFixed(i === 1 ? 1 : 2)) + ' ' + units[i];
+    }
+
     // ---------- click handler (event delegation) -------------------------
+    // Two-step recycle protocol:
+    //   1. POST action=recycle  (no confirm)
+    //        -> 200 ok            : same-fs move done, all good
+    //        -> 202 need_confirm  : cross-fs detected, ask the user
+    //        -> 4xx/5xx           : hard error, surface to user
+    //   2. Only after the user confirms the cross-fs prompt do we re-POST
+    //      with confirm=1, which actually performs the copy+rm.
     function handleClick(btn) {
         var id = btn.getAttribute('data-item-id');
         var path = btn.getAttribute('data-recycle-path') || '';
         if (!id || !path) return;
         if (btn.getAttribute('data-state') === STATE_BLOCKED) return;
 
-        // Confirmation prompt. Lightweight; can be replaced with a modal.
-        var msg = t('confirmRecycle');
+        // First-stage generic confirmation (always asked).
         try {
-            if (typeof window.confirm === 'function' && !window.confirm(msg)) {
+            if (typeof window.confirm === 'function' && !window.confirm(t('confirmRecycle'))) {
                 return;
             }
         } catch (_) {}
 
-        // Bump generation so stale responses are ignored.
+        // Bump generation so stale responses are ignored across both stages.
         var gen = (generations[id] || 0) + 1;
         generations[id] = gen;
-
         setState(btn, STATE_CHECKING);
 
-        apiPost({ action: 'recycle', path: path })
-            .then(function (json) {
+        apiRequest({ action: 'recycle', path: path })
+            .then(function (res) {
                 if (generations[id] !== gen) return; // stale
-                setState(btn, STATE_DONE, t('doneMessage'));
-                // The DFM table will refresh itself; in case it doesn't, we
-                // fade the row to indicate success.
-                var row = btn.closest('tr');
-                if (row && row.style) {
-                    row.style.opacity = '0.45';
+
+                // Stage 1 success: same-fs move already done.
+                if (res.status === 200 && res.json && res.json.ok) {
+                    onRecycleDone(btn, gen);
+                    return;
                 }
-                showToast(t('doneMessage'), false);
-                // Re-arm: after a moment, return to idle so the same button
-                // could be clicked again on the (refreshed) row.
-                setTimeout(function () {
-                    if (generations[id] === gen) setState(btn, STATE_IDLE);
-                }, 2500);
+
+                // Stage 1 needs cross-fs confirmation.
+                if ((res.status === 202 || (res.json && res.json.need_confirm)) && res.json) {
+                    var info = res.json;
+                    var sizeText = info.is_dir
+                        ? (t('crossFsDirPrompt') + ' (' + formatBytes(info.size) + ')')
+                        : (t('crossFsFilePrompt') + ' (' + formatBytes(info.size) + ')');
+                    var promptMsg =
+                        t('crossFsTitle') + '\n\n' +
+                        info.original_path + '\n\n' +
+                        sizeText + '\n' +
+                        t('crossFsBody') + '\n\n' +
+                        t('crossFsQuestion');
+                    var confirmed = false;
+                    try {
+                        confirmed = typeof window.confirm === 'function' && window.confirm(promptMsg);
+                    } catch (_) { confirmed = false; }
+                    if (!confirmed) {
+                        // User declined: revert to idle, no error.
+                        if (generations[id] === gen) setState(btn, STATE_IDLE);
+                        return;
+                    }
+                    // Stage 2: actually do the cross-fs move.
+                    setState(btn, STATE_RUNNING);
+                    return apiRequest({ action: 'recycle', path: path, confirm: '1' });
+                }
+
+                // Anything else is a hard error.
+                var err = new Error((res.json && res.json.error) || ('HTTP ' + res.status));
+                throw err;
+            })
+            .then(function (secondRes) {
+                if (!secondRes) return;            // stage 1 already finalised
+                if (generations[id] !== gen) return; // stale
+                if (secondRes.json && secondRes.json.ok) {
+                    onRecycleDone(btn, gen);
+                } else {
+                    setState(btn, STATE_ERROR, (secondRes.json && secondRes.json.error) || t('errorMessage'));
+                    showToast((secondRes.json && secondRes.json.error) || t('errorMessage'), true);
+                }
             })
             .catch(function (err) {
                 if (generations[id] !== gen) return; // stale
                 setState(btn, STATE_ERROR, err && err.message);
                 showToast((err && err.message) || t('errorMessage'), true);
             });
+    }
+
+    function onRecycleDone(btn, gen) {
+        setState(btn, STATE_DONE, t('doneMessage'));
+        var row = btn.closest('tr');
+        if (row && row.style) {
+            row.style.opacity = '0.45';
+        }
+        showToast(t('doneMessage'), false);
+        setTimeout(function () {
+            if (generations[btn.getAttribute('data-item-id')] === gen) {
+                setState(btn, STATE_IDLE);
+            }
+        }, 2500);
     }
 
     function onClickEvent(event) {

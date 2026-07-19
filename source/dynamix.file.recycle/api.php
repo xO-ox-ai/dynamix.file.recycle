@@ -78,8 +78,14 @@ try {
     switch ($action) {
         case 'recycle': {
             $path = (string) ($_POST['path'] ?? '');
+            $confirm = isset($_POST['confirm']) && in_array(strtolower((string) $_POST['confirm']), ['1', 'true', 'yes', 'on'], true);
             $canonical = $sec->assertPathInScope($path);
-            $r = $c->recycler()->recycle($canonical);
+            $r = $c->recycler()->recycle($canonical, $confirm);
+            if ($r->needConfirm) {
+                // 202 Accepted: precheck succeeded, waiting for the user to
+                // confirm before we actually move anything.
+                respond($r->toArray(), 202);
+            }
             if (!$r->ok) {
                 fail($r->error ?? 'Unknown error', 400, 'recycle_failed');
             }

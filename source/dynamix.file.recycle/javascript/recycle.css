@@ -31,7 +31,112 @@
     color: #ff9b9b;
 }
 
+.recycle-confirm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, .68);
+}
+
+.recycle-confirm-dialog {
+    width: min(760px, 100%);
+    max-height: calc(100vh - 40px);
+    overflow: auto;
+    padding: 18px;
+    background: var(--modal-bg, #1f1f1f);
+    color: var(--text-color, #eee);
+    border: 1px solid var(--table-row-line, #555);
+    border-radius: 6px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, .55);
+}
+
+.recycle-confirm-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.recycle-confirm-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.recycle-confirm-close {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px;
+    padding: 0 !important;
+    font-size: 24px;
+    line-height: 1;
+}
+
+.recycle-confirm-summary { margin: 12px 0; }
+
+.recycle-confirm-details {
+    border-top: 1px solid var(--table-row-line, #444);
+    border-bottom: 1px solid var(--table-row-line, #444);
+}
+
+.recycle-confirm-details > summary {
+    padding: 11px 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.recycle-confirm-scroll {
+    max-height: 320px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 6px 8px 0;
+}
+
+.recycle-confirm-item {
+    display: grid;
+    grid-template-columns: minmax(120px, .8fr) minmax(220px, 2fr);
+    gap: 5px 12px;
+    padding: 10px 6px;
+    border-top: 1px solid var(--table-row-line, #333);
+}
+
+.recycle-confirm-label { align-self: start; }
+
+.recycle-confirm-path {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    user-select: text;
+}
+
+.recycle-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.recycle-confirm-actions button {
+    width: auto !important;
+    min-width: 110px !important;
+}
+
+.recycle-confirm-approve { border-color: #ff8a3d; }
+
 @media (max-width: 640px) {
     .recycle-batch-action { min-width: 112px; }
     .recycle-toast { left: 12px; right: 12px; max-width: none; }
+    .recycle-confirm-overlay { padding: 10px; }
+    .recycle-confirm-dialog {
+        max-height: calc(100vh - 20px);
+        padding: 14px;
+    }
+    .recycle-confirm-item { grid-template-columns: 1fr; }
+    .recycle-confirm-scroll { max-height: 44vh; }
+    .recycle-confirm-actions { flex-wrap: wrap; }
+    .recycle-confirm-actions button { flex: 1 1 auto; }
 }

@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19m` architecture and its conservative
+This document describes the `2026.07.20a` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -30,14 +30,28 @@ reason and recovery advice.
 `RecycleInject.page` uses Unraid's `Menu='Buttons:5'` page channel. It does not
 patch `Browse.page`, `HeadInlineJS.php`, or another plugin.
 
-The plugin inserts one `input.extra` control immediately after DFM's native
+Although Unraid evaluates the Buttons channel for every WebGUI page, the hook
+checks the request route before loading the plugin Bootstrap or emitting any
+assets. Only `/Main/Browse` receives the runtime object, CSS and JavaScript;
+Main/Unassigned Devices and every other page do not load plugin runtime code
+or assets. Unraid may still render the inert navigation placeholder registered
+by the Buttons menu. The `dir` query value is intentionally not part of this
+route gate. Unsupported
+file-browser roots such as `/mnt/remotes` and `/mnt/disks` still render the
+Recycle control in a permanently disabled state without changing the file
+list or any Unassigned Devices data.
+
+The plugin inserts one `input.extra` control immediately before DFM's native
 Delete control in `#buttons`. Reusing the native class means DFM's own
 `selectOne()` and `selectAll()` logic enables or disables Recycle together with
 the current checkbox selection. No per-row destructive control is added.
 
 Selected paths come from the official `check_N` to `row_N[data][type]`
 mapping. The plugin validates all selected paths before showing one batch
-confirmation. Mutations then run sequentially to avoid SQLite lock contention.
+confirmation. The confirmation contains a bounded, scrollable list of every
+canonical source path and the authoritative destination directory returned by
+the backend inspection. Mutations begin only after explicit approval and then
+run sequentially to avoid SQLite lock contention.
 
 DFM asset URLs include the plugin version in addition to Unraid's `autov`
 value. The current script also removes legacy per-row controls, so an upgrade

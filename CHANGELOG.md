@@ -9,6 +9,25 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.20a] - 2026-07-20
+
+### Fixed
+
+- Restricted `RecycleInject.page` to the official `/Main/Browse` route before
+  loading Bootstrap, configuration, CSS, JavaScript or the runtime object.
+  Main/Unassigned Devices and every other WebGUI page do not load recycle
+  runtime code or assets.
+- Kept `/mnt/disks`, `/mnt/remotes`, USB and other unsupported file-browser
+  locations visible while disabling only the Recycle action.
+
+### Changed
+
+- Added an explicit second-stage confirmation dialog after all backend
+  inspections pass. Its bounded scrollable list shows every canonical source
+  path and the authoritative destination `.RecycleBin` folder; cancellation
+  sends no recycle request.
+- Moved Recycle immediately before DFM's native Delete button.
+
 ## [2026.07.19m] - 2026-07-19
 
 ### Added

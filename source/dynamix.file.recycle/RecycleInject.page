@@ -27,6 +27,18 @@ Link='recycle-runtime-hook'
  * self-contained (no jQuery dependency beyond what DFM already pulls in).
  */
 
+// The Buttons channel is evaluated for every WebGUI page. Keep this hook
+// completely inert outside the official DFM route: no Bootstrap, storage
+// discovery, runtime object, stylesheet, or script may reach Main/UD or any
+// other page. The browsed `dir` is deliberately not considered here; known
+// unsupported directories still load the DFM control in a disabled state.
+$requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+$requestPath = parse_url($requestUri, PHP_URL_PATH);
+if (!is_string($requestPath)
+    || preg_match('#(?:^|/)Main/Browse/?$#', $requestPath) !== 1) {
+    return;
+}
+
 $pluginRoot = '/plugins/dynamix.file.recycle';
 $pluginDir  = '/usr/local/emhttp/plugins/dynamix.file.recycle';
 $bootFile   = $pluginDir . '/include/Bootstrap.php';
@@ -98,6 +110,13 @@ $runtime = [
         'stateError'       => $i18n->t('state.error'),
         'confirmRecycle'   => $i18n->t('confirm.recycle'),
         'confirmBatch'     => $i18n->t('confirm.batch'),
+        'confirmTitle'     => $i18n->t('confirm.title'),
+        'confirmSummary'   => $i18n->t('confirm.summary'),
+        'confirmList'      => $i18n->t('confirm.list'),
+        'confirmSource'    => $i18n->t('confirm.source'),
+        'confirmDestination' => $i18n->t('confirm.destination'),
+        'confirmApprove'   => $i18n->t('confirm.approve'),
+        'confirmCancel'    => $i18n->t('confirm.cancel'),
         'doneMessage'      => $i18n->t('done.message'),
         'doneBatch'        => $i18n->t('done.batch'),
         'errorMessage'     => $i18n->t('error.message'),
@@ -164,14 +183,11 @@ $runtime = [
     ],
 ];
 
-$requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
-if (preg_match('#(?:^|/)Browse(?:[/?]|$)#', $requestUri) === 1) {
-    $c->logger()->info(
-        'ui_inject',
-        '',
-        sprintf('Browse assets emitted version=%s enabled=%d uri=%s', $version, $enabled ? 1 : 0, $requestUri)
-    );
-}
+$c->logger()->info(
+    'ui_inject',
+    '',
+    sprintf('Browse assets emitted version=%s enabled=%d uri=%s', $version, $enabled ? 1 : 0, $requestUri)
+);
 
 $runtimeJson = json_encode(
     $runtime,

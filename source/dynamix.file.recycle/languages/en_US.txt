@@ -17,6 +17,13 @@ state.done       = "Done"
 
 confirm.recycle  = "Move this item to the Recycle Bin?"
 confirm.batch    = "Move %d selected item(s) to the Recycle Bin?"
+confirm.title = "Confirm Recycle"
+confirm.summary = "Review all %d selected item(s) and their destination folders before continuing."
+confirm.list = "Files and destination folders (%d)"
+confirm.source = "Selected item"
+confirm.destination = "Recycle Bin folder"
+confirm.approve = "Move to Recycle Bin"
+confirm.cancel = "Cancel"
 
 done.message     = "Item moved to Recycle Bin."
 done.batch       = "%d item(s) moved to the Recycle Bin."

@@ -10,7 +10,7 @@
   "icon": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.svg",
   "logo": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.svg",
   "tag": "tools",
-  "version": "2026.07.19m",
+  "version": "2026.07.20a",
   "plugin": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg",
   "repo": "https://github.com/xO-ox-ai/dynamix.file.recycle",
   "website": "https://github.com/xO-ox-ai/dynamix.file.recycle",
@@ -19,5 +19,5 @@
     "en_US",
     "zh_CN"
   ],
-  "last_update": "2026-07-19"
+  "last_update": "2026-07-20"
 }

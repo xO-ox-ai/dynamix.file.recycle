@@ -16,6 +16,13 @@ state.done       = "完成"
 
 confirm.recycle  = "确认将此项移入回收站？"
 confirm.batch    = "确认将选中的 %d 个项目移入回收站？"
+confirm.title = "确认移入回收站"
+confirm.summary = "请核对选中的 %d 个项目及其目标回收站文件夹，确认后才会开始移动。"
+confirm.list = "文件与目标回收站文件夹（%d）"
+confirm.source = "选中的项目"
+confirm.destination = "目标回收站文件夹"
+confirm.approve = "确认移入回收站"
+confirm.cancel = "取消"
 
 done.message     = "已移入回收站。"
 done.batch       = "已将 %d 个项目移入回收站。"

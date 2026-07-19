@@ -66,6 +66,7 @@ global.window = {
     __recycleRuntime: {
         enabled: true,
         version: 'test',
+        testMode: true,
         i18n: { btnBatch: 'Recycle', btnTitle: 'Move selected to Recycle Bin' }
     },
     location: { pathname: '/Main/Browse', search: '?dir=%2Fmnt%2Fdisk1' },
@@ -86,26 +87,36 @@ global.document = {
 
 require('../source/dynamix.file.recycle/javascript/recycle.js');
 
-assert.strictEqual(controls.children[1], nativeDelete, 'native Delete control moved unexpectedly');
-const recycle = controls.children[2];
+const recycle = controls.children[1];
 assert.strictEqual(recycle.id, 'recycle-selected-button', 'batch recycle control was not created');
 assert.strictEqual(recycle.className, 'dfm_control recycle-batch-action', 'stable DFM control classes are missing');
 assert.strictEqual(recycle.classList.contains('extra'), true, 'supported path did not opt into native selection state');
 assert.strictEqual(recycle.value, 'Recycle', 'localized batch label is missing');
 assert.strictEqual(recycle.disabled, true, 'batch control must start disabled without a selection');
-assert.strictEqual(recycle.nextSibling, nativeCopy, 'batch recycle control is not immediately after Delete');
+assert.strictEqual(recycle.nextSibling, nativeDelete, 'batch recycle control is not immediately before Delete');
+assert.strictEqual(nativeDelete.nextSibling, nativeCopy, 'native Delete control moved relative to Copy');
 assert.strictEqual(controls.children.filter((item) => item.id === 'recycle-selected-button').length, 1, 'batch control was inserted more than once');
 
 const check = new Element('i');
 check.id = 'check_1';
 selectedChecks = [check];
 const requests = [];
+let reviewedItems = [];
+global.window.__recycleConfirmReview = (items) => {
+    reviewedItems = items;
+    return true;
+};
 global.fetch = (url, options) => {
     const body = new URLSearchParams(options.body);
     const action = body.get('action');
     requests.push({ action, path: body.get('path') });
     const payload = action === 'inspect'
-        ? { ok: true, inspection_token: 'token-1', path: body.get('path') }
+        ? {
+            ok: true,
+            inspection_token: 'token-1',
+            path: body.get('path'),
+            recycle_directory: '/mnt/disk1/.RecycleBin'
+        }
         : { ok: true };
     return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(payload) });
 };
@@ -119,29 +130,49 @@ setTimeout(() => {
     assert.deepStrictEqual(requests.map((request) => request.action), ['inspect', 'recycle'], 'batch action did not inspect before mutation');
     assert.strictEqual(requests[0].path, '/mnt/disk1/example.txt', 'selected DFM row path was not inspected');
     assert.strictEqual(requests[1].path, '/mnt/disk1/example.txt', 'inspected path was not recycled');
+    assert.deepStrictEqual(reviewedItems, [{
+        path: '/mnt/disk1/example.txt',
+        token: 'token-1',
+        recycleDirectory: '/mnt/disk1/.RecycleBin'
+    }], 'confirmation did not receive the inspected source and destination directory');
     assert.strictEqual(refreshed, true, 'DFM list was not refreshed after recycling');
     requests.length = 0;
     refreshed = false;
-    global.fetch = (url, options) => {
-        const body = new URLSearchParams(options.body);
-        const action = body.get('action');
-        requests.push({ action, path: body.get('path') });
-        if (action === 'inspect') {
-            return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true, inspection_token: 'token-2' }) });
-        }
-        return Promise.resolve({ status: 500, ok: false, json: () => Promise.resolve({ ok: false, error: 'simulated failure' }) });
-    };
+    global.window.__recycleConfirmReview = () => false;
     recycle.disabled = false;
     recycle.listeners.click();
     setTimeout(() => {
-        assert.strictEqual(refreshed, false, 'failed non-mutating recycle unexpectedly refreshed DFM and cleared selection');
-        assert.strictEqual(recycle.disabled, false, 'failed non-mutating recycle did not restore the selected action state');
-        global.window.location.search = '?dir=%2Fmnt%2Fuser';
+        assert.deepStrictEqual(requests.map((request) => request.action), ['inspect'], 'cancelled confirmation still mutated a selected item');
+        assert.strictEqual(refreshed, false, 'cancelled confirmation refreshed DFM and cleared selection');
+        assert.strictEqual(recycle.disabled, false, 'cancelled confirmation did not restore the selected action state');
+        requests.length = 0;
+        global.window.__recycleConfirmReview = () => true;
+        global.fetch = (url, options) => {
+            const body = new URLSearchParams(options.body);
+            const action = body.get('action');
+            requests.push({ action, path: body.get('path') });
+            if (action === 'inspect') {
+                return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({
+                    ok: true,
+                    inspection_token: 'token-2',
+                    path: body.get('path'),
+                    recycle_directory: '/mnt/disk1/.RecycleBin'
+                }) });
+            }
+            return Promise.resolve({ status: 500, ok: false, json: () => Promise.resolve({ ok: false, error: 'simulated failure' }) });
+        };
         recycle.disabled = false;
         recycle.listeners.click();
-        assert.strictEqual(recycle.disabled, true, 'known unsupported /mnt/user path did not keep Recycle disabled');
-        assert.strictEqual(recycle.classList.contains('extra'), false, 'known unsupported path retained DFM selection-state class');
-        console.log('DFM bottom-control contract passed.');
-        process.exit(0);
+        setTimeout(() => {
+            assert.strictEqual(refreshed, false, 'failed non-mutating recycle unexpectedly refreshed DFM and cleared selection');
+            assert.strictEqual(recycle.disabled, false, 'failed non-mutating recycle did not restore the selected action state');
+            global.window.location.search = '?dir=%2Fmnt%2Fuser';
+            recycle.disabled = false;
+            recycle.listeners.click();
+            assert.strictEqual(recycle.disabled, true, 'known unsupported /mnt/user path did not keep Recycle disabled');
+            assert.strictEqual(recycle.classList.contains('extra'), false, 'known unsupported path retained DFM selection-state class');
+            console.log('DFM bottom-control contract passed.');
+            process.exit(0);
+        }, 20);
     }, 20);
 }, 20);

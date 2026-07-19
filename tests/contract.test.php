@@ -43,13 +43,16 @@ check(strpos($api, "case 'inspect'") < strpos($api, "case 'recycle'"), 'inspect 
 $js = source('source/dynamix.file.recycle/javascript/recycle.js');
 check(str_contains($js, "document.getElementById('buttons')"), 'official DFM bottom control container is missing');
 check(str_contains($js, "doActions(1,"), 'native Delete control cannot be located');
-check(str_contains($js, 'deleteButton.nextSibling'), 'recycle control is not inserted immediately after Delete');
+check(str_contains($js, 'insertBefore(button, deleteButton)'), 'recycle control is not inserted immediately before Delete');
 check(str_contains($js, "i[id^=\"check_\"].fa-check-square-o"), 'selected DFM rows are not read from native check controls');
 check(str_contains($js, "document.getElementById('row_' + suffix)"), 'selected rows are not mapped to canonical DFM paths');
 check(!str_contains($js, "className = 'recycle-action'"), 'dangerous per-row recycle controls are still created');
 check(str_contains($js, "querySelectorAll('.recycle-slot, .recycle-action')"), 'legacy cached row controls are not removed');
 check(str_contains($js, "action: 'inspect'"), 'front end does not inspect before recycle');
-check(strpos($js, "action: 'inspect'") < strpos($js, 'window.confirm'), 'confirmation occurs before backend inspection');
+check(!str_contains($js, 'window.confirm'), 'DFM recycle still uses an uninformative native confirmation prompt');
+check(str_contains($js, 'confirmInspectedItems(inspected)'), 'inspected files are not shown in a second-stage confirmation dialog');
+check(str_contains($js, "makeElement('details', 'recycle-confirm-details')"), 'confirmation does not provide a collapsible item list');
+check(str_contains($js, 'item.recycleDirectory'), 'confirmation does not show the authoritative destination folder');
 
 $fs = source('source/dynamix.file.recycle/include/FsInspector.php');
 foreach (['/boot', '/mnt/user', '/mnt/user0', '/mnt/cache', '/mnt/disks', '/mnt/remotes', '/mnt/rootshare'] as $blocked) {
@@ -116,20 +119,46 @@ check(
 );
 
 $inject = source('source/dynamix.file.recycle/RecycleInject.page');
+$renderInject = static function (string $pageSource, string $requestUri): string {
+    $separator = strpos($pageSource, "---\n");
+    if ($separator === false) throw new RuntimeException('Runtime hook page separator is missing');
+    $body = substr($pageSource, $separator + 4);
+    $previous = $_SERVER['REQUEST_URI'] ?? null;
+    $_SERVER['REQUEST_URI'] = $requestUri;
+    ob_start();
+    try {
+        eval('?>' . $body);
+        return (string) ob_get_clean();
+    } finally {
+        if (ob_get_level() > 0) ob_end_clean();
+        if ($previous === null) unset($_SERVER['REQUEST_URI']);
+        else $_SERVER['REQUEST_URI'] = $previous;
+    }
+};
+check($renderInject($inject, '/Main') === '', 'runtime hook emits output on the Main/UD page');
 check(str_contains($inject, "parse_ini_file("), 'plugin-local Unraid menu translations are not loaded');
 check(str_contains($inject, "\$pluginDir  = '/usr/local/emhttp/plugins/dynamix.file.recycle'"), 'runtime hook does not use the absolute plugin directory');
 check(!str_contains($inject, 'parse_plugin('), 'menu translation still depends on Unraid global plugin cache state');
 check(str_contains($inject, "Link='recycle-runtime-hook'"), 'runtime hook can appear as an unwanted navigation button');
 check(substr_count($inject, 'autov(') === 2, 'front-end assets do not use Unraid cache busting');
 check(substr_count($inject, 'rawurlencode($version)') === 2, 'DFM assets are not keyed by plugin version');
-check(!str_contains($inject, '$onBrowse'), 'server-side Browse detection can still suppress the DFM button');
+check(str_contains($inject, "preg_match('#(?:^|/)Main/Browse/?$#'"), 'runtime hook is not restricted to the official DFM route');
+check(
+    strpos($inject, "preg_match('#(?:^|/)Main/Browse/?$#'") < strpos($inject, 'require_once $bootFile'),
+    'runtime hook performs plugin or storage initialization before checking the DFM route'
+);
+check(
+    !str_contains(substr($inject, 0, strpos($inject, 'require_once $bootFile')), '$_GET'),
+    'runtime hook incorrectly uses the browsed storage path to suppress DFM assets'
+);
 check(str_contains($inject, "'enabled'    => \$enabled"), 'disabled state prevents the front-end assets from loading for diagnostics');
 check(!str_contains($api, 'assertAdmin'), 'API still relies on a non-portable session shape');
-check(str_contains($js, "window.location.pathname"), 'front-end does not identify the DFM Browse route');
+check(str_contains($js, "Main\\/Browse"), 'front-end does not identify the exact official DFM Browse route');
 check(str_contains($js, "path === '/mnt/user'"), 'known unsupported user-share browsing does not keep Recycle disabled');
 check(str_contains($js, "button.classList.toggle('extra', !blocked)"), 'known unsupported paths can still be enabled by DFM selection state');
 check(str_contains($js, "className = 'dfm_control recycle-batch-action'"), 'DFM batch control does not use a stable native control class');
 check(str_contains($js, "button.classList.add('extra')"), 'supported DFM paths do not opt into native selection state');
+check(str_contains($recycler, "'recycle_directory' => \$recycleDirectory"), 'inspection does not return the authoritative destination directory');
 
 $settingsJs = source('source/dynamix.file.recycle/javascript/settings.js');
 $settingsCss = source('source/dynamix.file.recycle/javascript/settings.css');

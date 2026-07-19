@@ -33,6 +33,10 @@ final class Recycler
             'trace=' . $trace . ' volume=' . $volume['volume'] . ' fs=' . $volume['fs']
                 . ' relative=' . $volume['relative'] . ' dev=' . (int) $stat['dev'] . ' ino=' . (int) $stat['ino']
         );
+        $recycleRoot = rtrim($volume['volume'], '/') . '/' . FsInspector::RECYCLE_NAME;
+        $relativeDirectory = dirname((string) $volume['relative']);
+        $recycleDirectory = $recycleRoot
+            . ($relativeDirectory === '.' ? '' : '/' . $relativeDirectory);
         return [
             'ok' => true,
             'path' => $canonical,
@@ -41,6 +45,7 @@ final class Recycler
             'filesystem' => $volume['fs'],
             'is_dir' => (((int) $stat['mode']) & 0170000) === 0040000,
             'size' => (int) $stat['size'],
+            'recycle_directory' => $recycleDirectory,
             'inspection_token' => $this->security->issueInspectionToken($canonical),
         ];
     }

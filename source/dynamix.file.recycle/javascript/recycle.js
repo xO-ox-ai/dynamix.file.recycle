@@ -7,7 +7,7 @@
         console.info('[Dynamix File Recycle Bin] disabled by plugin settings');
         return;
     }
-    if (!/(?:^|\/)Browse(?:\/|$)/.test(window.location.pathname)) return;
+    if (!/(?:^|\/)Main\/Browse\/?$/.test(window.location.pathname)) return;
 
     var button = null;
     var busy = false;
@@ -52,6 +52,99 @@
 
     function formatCount(template, count) {
         return String(template).replace('%d', String(count));
+    }
+
+    function makeElement(tag, className, text) {
+        var element = document.createElement(tag);
+        if (className) element.className = className;
+        if (text !== undefined) element.textContent = text;
+        return element;
+    }
+
+    function confirmInspectedItems(items) {
+        if (RT.testMode === true && typeof window.__recycleConfirmReview === 'function') {
+            return Promise.resolve(window.__recycleConfirmReview(items));
+        }
+        return new Promise(function (resolve) {
+            var overlay = makeElement('div', 'recycle-confirm-overlay');
+            var dialog = makeElement('div', 'recycle-confirm-dialog');
+            dialog.setAttribute('role', 'dialog');
+            dialog.setAttribute('aria-modal', 'true');
+            dialog.setAttribute('aria-labelledby', 'recycle-confirm-title');
+
+            var header = makeElement('div', 'recycle-confirm-header');
+            var title = makeElement('h2', '', t('confirmTitle'));
+            title.id = 'recycle-confirm-title';
+            var close = makeElement('button', 'recycle-confirm-close', '\u00d7');
+            close.type = 'button';
+            close.setAttribute('aria-label', t('confirmCancel'));
+            close.setAttribute('title', t('confirmCancel'));
+            header.appendChild(title);
+            header.appendChild(close);
+
+            var summary = makeElement(
+                'p',
+                'recycle-confirm-summary',
+                formatCount(t('confirmSummary'), items.length)
+            );
+            var details = makeElement('details', 'recycle-confirm-details');
+            details.open = true;
+            var detailsSummary = makeElement(
+                'summary',
+                '',
+                formatCount(t('confirmList'), items.length)
+            );
+            var scroll = makeElement('div', 'recycle-confirm-scroll');
+            scroll.setAttribute('role', 'list');
+
+            items.forEach(function (item) {
+                var row = makeElement('div', 'recycle-confirm-item');
+                row.setAttribute('role', 'listitem');
+                var sourceLabel = makeElement('strong', 'recycle-confirm-label', t('confirmSource'));
+                var source = makeElement('code', 'recycle-confirm-path', item.path);
+                var destinationLabel = makeElement('strong', 'recycle-confirm-label', t('confirmDestination'));
+                var destination = makeElement('code', 'recycle-confirm-path', item.recycleDirectory);
+                row.appendChild(sourceLabel);
+                row.appendChild(source);
+                row.appendChild(destinationLabel);
+                row.appendChild(destination);
+                scroll.appendChild(row);
+            });
+            details.appendChild(detailsSummary);
+            details.appendChild(scroll);
+
+            var actions = makeElement('div', 'recycle-confirm-actions');
+            var cancel = makeElement('button', '', t('confirmCancel'));
+            cancel.type = 'button';
+            var approve = makeElement('button', 'recycle-confirm-approve', t('confirmApprove'));
+            approve.type = 'button';
+            actions.appendChild(cancel);
+            actions.appendChild(approve);
+
+            dialog.appendChild(header);
+            dialog.appendChild(summary);
+            dialog.appendChild(details);
+            dialog.appendChild(actions);
+            overlay.appendChild(dialog);
+
+            var finish = function (approved) {
+                document.removeEventListener('keydown', onKeyDown);
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                resolve(approved);
+            };
+            var onKeyDown = function (event) {
+                if (event.key === 'Escape') finish(false);
+            };
+            close.addEventListener('click', function () { finish(false); });
+            cancel.addEventListener('click', function () { finish(false); });
+            approve.addEventListener('click', function () { finish(true); });
+            overlay.addEventListener('click', function (event) {
+                if (event.target === overlay) finish(false);
+            });
+            document.addEventListener('keydown', onKeyDown);
+            document.body.appendChild(overlay);
+            if (typeof approve.focus === 'function') approve.focus();
+        });
     }
 
     function showToast(message, isError) {
@@ -125,10 +218,17 @@
 
     function inspect(item) {
         return apiRequest({ action: 'inspect', path: item.path }).then(function (result) {
-            if (result.status !== 200 || !result.json || result.json.ok !== true || !result.json.inspection_token) {
+            if (result.status !== 200 || !result.json || result.json.ok !== true
+                || !result.json.inspection_token
+                || typeof result.json.path !== 'string'
+                || typeof result.json.recycle_directory !== 'string') {
                 throw new Error(apiError(result));
             }
-            return { path: item.path, token: result.json.inspection_token };
+            return {
+                path: result.json.path,
+                token: result.json.inspection_token,
+                recycleDirectory: result.json.recycle_directory
+            };
         });
     }
 
@@ -186,8 +286,12 @@
 
         setBusy(true, t('stateChecking'));
         mapLimit(items, 4, inspect).then(function (inspected) {
-            var confirmed = window.confirm(formatCount(t('confirmBatch'), inspected.length));
-            if (!confirmed) {
+            return confirmInspectedItems(inspected).then(function (confirmed) {
+                if (!confirmed) return null;
+                return inspected;
+            });
+        }).then(function (inspected) {
+            if (inspected === null) {
                 setBusy(false, t('btnBatch'));
                 return null;
             }
@@ -230,8 +334,8 @@
         button.disabled = true;
         button.setAttribute('title', knownUnsupportedBrowsePath() ? t('btnTitleBlocked') : t('btnTitle'));
         button.addEventListener('click', handleBatchRecycle);
-        deleteButton.parentNode.insertBefore(button, deleteButton.nextSibling);
-        console.info('[Dynamix File Recycle Bin] batch control inserted after Delete', RT.version || 'unknown');
+        deleteButton.parentNode.insertBefore(button, deleteButton);
+        console.info('[Dynamix File Recycle Bin] batch control inserted before Delete', RT.version || 'unknown');
         return true;
     }
 

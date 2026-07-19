@@ -9,6 +9,21 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19f] - 2026-07-19
+
+### Changed
+- Rebuilt Settings using the proven USB Guardian pattern: a static page shell
+  loads and saves all configuration through a dedicated JavaScript API client.
+- Replaced dangerous per-row trash controls with one native-style DFM batch
+  action immediately to the right of Delete. DFM itself controls its enabled
+  state from the current row selection.
+
+### Fixed
+- Corrected the `boot()` function import in `api.php`, which previously used a
+  class import and prevented every API action from starting.
+- Added validated supported-volume and status data to `config_get`, localized
+  asynchronous settings states, and package checks for the new settings assets.
+
 ## [2026.07.19e] - 2026-07-19
 
 ### Fixed

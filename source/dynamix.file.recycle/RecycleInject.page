@@ -12,8 +12,9 @@ Link='recycle-runtime-hook'
  * Browse.page, or any dynamix file — we just ride the same channel the
  * official DFM BrowseButton.page (Buttons:3a) already uses.
  *
- * Rank 5 makes us load AFTER DFM (3a), so when the Browse page renders, our
- * <script> can wrap DFM's loadList() before its initial jQuery-ready call.
+ * Rank 5 makes us load after DFM (3a). The front-end adds one batch action to
+ * DFM's bottom control strip after the native Delete button and reuses DFM's
+ * own `input.extra` selection-state handling.
  *
  * The injected JSON object `window.__recycleRuntime` carries:
  *   - csrfToken   string   (read from $var, NOT hardcoded in JS)
@@ -87,6 +88,7 @@ $runtime = [
     'history'    => $cfg->getHistoryEnabled(),
     'i18n' => [
         'btnTitle'         => $i18n->t('btn.title'),
+        'btnBatch'         => $i18n->t('btn.batch'),
         'btnTitleBlocked'  => $i18n->t('btn.title.blocked'),
         'btnTitleError'    => $i18n->t('btn.title.error'),
         'stateIdle'        => $i18n->t('state.idle'),
@@ -95,8 +97,11 @@ $runtime = [
         'stateBlocked'     => $i18n->t('state.blocked'),
         'stateError'       => $i18n->t('state.error'),
         'confirmRecycle'   => $i18n->t('confirm.recycle'),
+        'confirmBatch'     => $i18n->t('confirm.batch'),
         'doneMessage'      => $i18n->t('done.message'),
+        'doneBatch'        => $i18n->t('done.batch'),
         'errorMessage'     => $i18n->t('error.message'),
+        'noSelection'      => $i18n->t('error.no_selection'),
         'errors' => [
             'unsupported_boot_device'       => $i18n->t('error.unsupported_boot_device'),
             'unsupported_user_share'        => $i18n->t('error.unsupported_user_share'),
@@ -112,6 +117,49 @@ $runtime = [
             'unsupported_path'              => $i18n->t('error.unsupported_path'),
             'volume_management_disabled'    => $i18n->t('error.volume_management_disabled'),
             'invalid_volume_selection'      => $i18n->t('error.invalid_volume_selection'),
+        ],
+        'settings' => [
+            'intro' => $i18n->t('settings.intro'),
+            'general' => $i18n->t('settings.general'),
+            'enable' => $i18n->t('settings.enable'),
+            'enabled' => $i18n->t('settings.enabled'),
+            'enableHint' => $i18n->t('settings.enable_hint'),
+            'volumes' => $i18n->t('settings.volumes'),
+            'enabledVolumes' => $i18n->t('settings.enabled_volumes'),
+            'volumesHint' => $i18n->t('settings.volumes_hint'),
+            'noVolumes' => $i18n->t('settings.no_volumes'),
+            'logging' => $i18n->t('settings.logging'),
+            'logLevel' => $i18n->t('settings.log_level'),
+            'logRetention' => $i18n->t('settings.log_retention'),
+            'logSize' => $i18n->t('settings.log_size'),
+            'history' => $i18n->t('settings.history'),
+            'recordHistory' => $i18n->t('settings.record_history'),
+            'historyRetention' => $i18n->t('settings.history_retention'),
+            'maintenance' => $i18n->t('settings.maintenance'),
+            'maintenanceHint' => $i18n->t('settings.maintenance_hint'),
+            'ageDays' => $i18n->t('settings.age_days'),
+            'capacityMode' => $i18n->t('settings.capacity_mode'),
+            'percent' => $i18n->t('settings.percent'),
+            'absolute' => $i18n->t('settings.absolute'),
+            'capacityPercent' => $i18n->t('settings.capacity_percent'),
+            'capacityAbsolute' => $i18n->t('settings.capacity_absolute'),
+            'scheduledCleanup' => $i18n->t('settings.scheduled_cleanup'),
+            'cronHint' => $i18n->t('settings.cron_hint'),
+            'vacuum' => $i18n->t('settings.vacuum'),
+            'security' => $i18n->t('settings.security'),
+            'preserveMetadata' => $i18n->t('settings.preserve_metadata'),
+            'status' => $i18n->t('settings.status'),
+            'activeItems' => $i18n->t('settings.active_items'),
+            'runtimeLog' => $i18n->t('settings.runtime_log'),
+            'auditLog' => $i18n->t('settings.audit_log'),
+            'sqliteLayout' => $i18n->t('settings.sqlite_layout'),
+            'save' => $i18n->t('settings.save'),
+            'openBin' => $i18n->t('settings.open_bin'),
+            'loading' => $i18n->t('settings.loading'),
+            'saving' => $i18n->t('settings.saving'),
+            'saved' => $i18n->t('settings.saved'),
+            'requestFailed' => $i18n->t('settings.request_failed'),
+            'bytes' => $i18n->t('settings.bytes'),
         ],
     ],
 ];

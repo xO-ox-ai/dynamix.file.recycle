@@ -3,16 +3,11 @@
 const assert = require('assert');
 
 class ClassList {
-    constructor(owner) {
-        this.owner = owner;
-        this.values = new Set();
-    }
-    add(value) { this.values.add(value); this.owner.className = Array.from(this.values).join(' '); }
+    constructor() { this.values = new Set(); }
+    add(value) { this.values.add(value); }
+    remove(value) { this.values.delete(value); }
     contains(value) { return this.values.has(value); }
-    toggle(value, force) {
-        if (force) this.add(value);
-        else this.values.delete(value);
-    }
+    toggle(value, force) { if (force) this.values.add(value); else this.values.delete(value); }
 }
 
 class Element {
@@ -21,17 +16,20 @@ class Element {
         this.children = [];
         this.attributes = {};
         this.className = '';
-        this.classList = new ClassList(this);
-        this.firstChild = null;
+        this.classList = new ClassList();
         this.parentNode = null;
+        this.nextSibling = null;
+        this.disabled = false;
+        this.value = '';
+        this.listeners = {};
     }
     setAttribute(name, value) { this.attributes[name] = String(value); }
     getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null; }
-    removeAttribute(name) { delete this.attributes[name]; }
+    addEventListener(name, listener) { this.listeners[name] = listener; }
     appendChild(child) {
         child.parentNode = this;
         this.children.push(child);
-        this.firstChild = this.children[0] || null;
+        this.syncSiblings();
         return child;
     }
     insertBefore(child, before) {
@@ -39,77 +37,88 @@ class Element {
         const index = before ? this.children.indexOf(before) : -1;
         if (index >= 0) this.children.splice(index, 0, child);
         else this.children.push(child);
-        this.firstChild = this.children[0] || null;
+        this.syncSiblings();
         return child;
     }
-    querySelector(selector) {
-        if (selector === 'i[id^="row_"][data][type]') return this.action || null;
-        if (selector === '.recycle-slot') {
-            return this.children.find((child) => child.className === 'recycle-slot') || null;
-        }
-        if (selector.startsWith('.recycle-action[data-item-id="')) {
-            return this.children.find((child) => child.className === 'recycle-action') || null;
-        }
-        return null;
+    syncSiblings() {
+        this.children.forEach((child, index) => {
+            child.nextSibling = this.children[index + 1] || null;
+        });
     }
 }
 
-const row = new Element('tr');
-const checkboxCell = row.appendChild(new Element('td'));
-const typeCell = row.appendChild(new Element('td'));
-const nameCell = row.appendChild(new Element('td'));
-const ownerCell = row.appendChild(new Element('td'));
-const permissionsCell = row.appendChild(new Element('td'));
-const sizeCell = row.appendChild(new Element('td'));
-const hiddenActionCell = row.appendChild(new Element('td'));
-hiddenActionCell.classList.add('responsive-hidden');
-
-const originalName = nameCell.appendChild(new Element('a'));
-const action = new Element('i');
-action.setAttribute('id', 'row_1');
-action.setAttribute('data', '/mnt/disk2/Movies/example.mkv');
-action.setAttribute('type', 'f');
-row.action = action;
-
-const table = new Element('table');
-table.querySelectorAll = (selector) => selector === 'tbody:not(.tablesorter-infoOnly) > tr' ? [row] : [];
+const controls = new Element('div');
+controls.id = 'buttons';
+const done = controls.appendChild(new Element('input'));
+done.type = 'button';
+done.setAttribute('onclick', "done('Browse')");
+const nativeDelete = controls.appendChild(new Element('input'));
+nativeDelete.type = 'button';
+nativeDelete.value = 'Delete';
+nativeDelete.setAttribute('onclick', 'doActions(1,this.value)');
+const nativeCopy = controls.appendChild(new Element('input'));
+nativeCopy.type = 'button';
+nativeCopy.value = 'Copy';
+nativeCopy.setAttribute('onclick', 'doActions(3,this.value)');
+controls.querySelectorAll = (selector) => selector === 'input[type="button"]' ? controls.children : [];
 
 global.window = {
     __recycleRuntime: {
         enabled: true,
         version: 'test',
-        i18n: { btnTitle: 'Move to Recycle Bin' }
+        i18n: { btnBatch: 'Recycle', btnTitle: 'Move selected to Recycle Bin' }
     },
     location: { pathname: '/Main/Browse' },
-    CSS: { escape: (value) => value }
+    confirm: () => true
 };
+let selectedChecks = [];
+const rowAction = new Element('i');
+rowAction.setAttribute('data', '/mnt/disk1/example.txt');
+rowAction.setAttribute('type', 'f');
 global.document = {
     readyState: 'complete',
     body: { contains: () => true, appendChild: () => {} },
-    querySelector: (selector) => selector === 'table.indexer' ? table : null,
+    getElementById: (id) => id === 'buttons' ? controls : (id === 'row_1' ? rowAction : null),
+    querySelectorAll: (selector) => selector === 'i[id^="check_"].fa-check-square-o' ? selectedChecks : [],
     createElement: (tagName) => new Element(tagName),
     addEventListener: () => {}
-};
-global.MutationObserver = class {
-    observe() {}
-    disconnect() {}
 };
 
 require('../source/dynamix.file.recycle/javascript/recycle.js');
 
-assert.strictEqual(row.getAttribute('data-recycle-injected'), '1', 'row was not decorated');
-assert.strictEqual(nameCell.children[0].className, 'recycle-slot', 'control slot is not first in the name cell');
-assert.strictEqual(nameCell.children[1], originalName, 'existing name content moved unexpectedly');
-assert.strictEqual(hiddenActionCell.querySelector('.recycle-slot'), null, 'control was placed in a responsive-hidden action cell');
+assert.strictEqual(controls.children[1], nativeDelete, 'native Delete control moved unexpectedly');
+const recycle = controls.children[2];
+assert.strictEqual(recycle.id, 'recycle-selected-button', 'batch recycle control was not created');
+assert.strictEqual(recycle.className, 'dfm_control extra recycle-batch-action', 'native DFM selection classes are missing');
+assert.strictEqual(recycle.value, 'Recycle', 'localized batch label is missing');
+assert.strictEqual(recycle.disabled, true, 'batch control must start disabled without a selection');
+assert.strictEqual(recycle.nextSibling, nativeCopy, 'batch recycle control is not immediately after Delete');
+assert.strictEqual(controls.children.filter((item) => item.id === 'recycle-selected-button').length, 1, 'batch control was inserted more than once');
 
-const button = nameCell.children[0].children[0];
-assert.strictEqual(button.className, 'recycle-action', 'recycle button was not created');
-assert.strictEqual(button.getAttribute('data-recycle-path'), '/mnt/disk2/Movies/example.mkv', 'row path was not preserved');
-assert.strictEqual(button.children[0].className, 'fa fa-trash-o recycle-icon', 'native icon class is missing');
+const check = new Element('i');
+check.id = 'check_1';
+selectedChecks = [check];
+const requests = [];
+global.fetch = (url, options) => {
+    const body = new URLSearchParams(options.body);
+    const action = body.get('action');
+    requests.push({ action, path: body.get('path') });
+    const payload = action === 'inspect'
+        ? { ok: true, inspection_token: 'token-1', path: body.get('path') }
+        : { ok: true };
+    return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(payload) });
+};
+let refreshed = false;
+global.window.loadList = () => { refreshed = true; };
 
-void checkboxCell;
-void typeCell;
-void ownerCell;
-void permissionsCell;
-void sizeCell;
-console.log('DFM responsive UI contract passed.');
+recycle.disabled = false;
+recycle.listeners.click();
+
+setTimeout(() => {
+    assert.deepStrictEqual(requests.map((request) => request.action), ['inspect', 'recycle'], 'batch action did not inspect before mutation');
+    assert.strictEqual(requests[0].path, '/mnt/disk1/example.txt', 'selected DFM row path was not inspected');
+    assert.strictEqual(requests[1].path, '/mnt/disk1/example.txt', 'inspected path was not recycled');
+    assert.strictEqual(refreshed, true, 'DFM list was not refreshed after recycling');
+    console.log('DFM bottom-control contract passed.');
+    process.exit(0);
+}, 20);

@@ -36,14 +36,17 @@ check(str_contains($plg, 'icon="recycle"'), 'Plugin Manager does not use the rec
 $api = source('source/dynamix.file.recycle/api.php');
 check(str_contains($api, "REQUEST_METHOD'] ?? '') !== 'POST'"), 'API does not require POST');
 check(!str_contains($api, '$_GET[\'action\']'), 'API accepts action from GET and can bypass CSRF');
+check(str_contains($api, 'use function DynamixFileRecycle\\boot;'), 'API imports boot() as a class instead of a function');
 check(str_contains($api, "case 'inspect'"), 'click-time inspect action is missing');
 check(strpos($api, "case 'inspect'") < strpos($api, "case 'recycle'"), 'inspect must precede recycle');
 
 $js = source('source/dynamix.file.recycle/javascript/recycle.js');
-check(str_contains($js, "document.querySelector('table.indexer')"), 'official DFM table selector is missing');
-check(str_contains($js, "i[id^=\"row_\"][data][type]"), 'official DFM row-path selector is missing');
-check(str_contains($js, "url === '/webGui/include/Browse.php'"), 'Browse.php response bridge is missing');
-check(str_contains($js, 'args[0] = decorateHtml(html)'), 'DFM HTML is not decorated before commit');
+check(str_contains($js, "document.getElementById('buttons')"), 'official DFM bottom control container is missing');
+check(str_contains($js, "doActions(1,"), 'native Delete control cannot be located');
+check(str_contains($js, 'deleteButton.nextSibling'), 'recycle control is not inserted immediately after Delete');
+check(str_contains($js, "i[id^=\"check_\"].fa-check-square-o"), 'selected DFM rows are not read from native check controls');
+check(str_contains($js, "document.getElementById('row_' + suffix)"), 'selected rows are not mapped to canonical DFM paths');
+check(!str_contains($js, 'recycle-action'), 'dangerous per-row recycle controls still exist');
 check(str_contains($js, "action: 'inspect'"), 'front end does not inspect before recycle');
 check(strpos($js, "action: 'inspect'") < strpos($js, 'window.confirm'), 'confirmation occurs before backend inspection');
 
@@ -72,8 +75,12 @@ check(str_contains($recycler, 'verifyInspectionToken'), 'recycle does not bind t
 check(str_contains($recycler, 'isVolumeAllowed'), 'recycler does not enforce the configured volume allowlist');
 
 $settings = source('source/dynamix.file.recycle/DynamixFileRecycle.page');
-check(str_contains($settings, 'allowed_volumes[]'), 'settings page does not expose per-volume management switches');
-check(str_contains($settings, 'supportedVolumes()'), 'volume switches are not built from currently supported volumes');
+check(str_contains($settings, 'id="recycle-settings-volumes"'), 'settings page does not expose the managed-volume container');
+check(!str_contains($settings, 'Bootstrap.php'), 'settings page still initializes backend services during Unraid page evaluation');
+check(str_contains($settings, 'DynamixFileRecycleSettingsRuntime'), 'settings page does not use the USB Guardian-style runtime bootstrap');
+check(str_contains($settings, 'javascript/settings.js'), 'settings page does not load its API client');
+check(str_contains($settings, 'include/I18n.php'), 'settings page does not load its lightweight localization helper');
+check(str_contains($settings, "'i18n' => \$recycleSettingsCatalog"), 'settings page does not embed its own localization catalog');
 check(str_contains($settings, 'Menu="OtherSettings:30 DiskUtilities:30"'), 'settings page is not registered in both expected menus');
 check(str_contains($settings, 'Title="Dynamix File Recycle Bin"'), 'plugin title is not a translatable English key');
 check(str_contains($settings, 'Icon="recycle"'), 'plugin tile does not use a valid Unraid icon');
@@ -94,9 +101,8 @@ foreach (glob($root . '/source/dynamix.file.recycle/*.page') ?: [] as $pageFile)
     );
 }
 check(
-    substr_count($settings, '/usr/local/emhttp/plugins/dynamix.file.recycle/') >= 1
-        && substr_count($recyclePage, '/usr/local/emhttp/plugins/dynamix.file.recycle/') >= 1,
-    'runtime pages do not use the proven absolute plugin path'
+    substr_count($recyclePage, '/usr/local/emhttp/plugins/dynamix.file.recycle/') >= 1,
+    'Recycle Bin runtime page does not use the proven absolute plugin path'
 );
 
 $inject = source('source/dynamix.file.recycle/RecycleInject.page');
@@ -109,8 +115,12 @@ check(!str_contains($inject, '$onBrowse'), 'server-side Browse detection can sti
 check(str_contains($inject, "'enabled'    => \$enabled"), 'disabled state prevents the front-end assets from loading for diagnostics');
 check(!str_contains($api, 'assertAdmin'), 'API still relies on a non-portable session shape');
 check(str_contains($js, "window.location.pathname"), 'front-end does not identify the DFM Browse route');
-check(str_contains($js, "fa fa-trash-o recycle-icon"), 'DFM button does not use the bundled Unraid icon font');
-check(str_contains($js, 'var anchor = cells[2]'), 'DFM button is not anchored in the responsive, always-visible name column');
+check(str_contains($js, "className = 'dfm_control extra recycle-batch-action'"), 'DFM batch control does not use native selection-state classes');
+
+$settingsJs = source('source/dynamix.file.recycle/javascript/settings.js');
+check(str_contains($settingsJs, "request('config_get')"), 'settings are not loaded through the API');
+check(str_contains($settingsJs, "request('config_save'"), 'settings are not saved through the API');
+check(str_contains($api, "'supported_volumes' => \$supportedVolumes"), 'settings API does not return validated volumes');
 
 $menuLanguage = source('source/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt');
 check(str_contains($menuLanguage, 'Dynamix File Recycle Bin=文件回收站'), 'Chinese Unraid menu translation is missing');

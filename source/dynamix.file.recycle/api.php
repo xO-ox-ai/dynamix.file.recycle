@@ -30,9 +30,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/include/Bootstrap.php';
 
-use DynamixFileRecycle\boot;
-use DynamixFileRecycle\Config;
 use DynamixFileRecycle\FsInspector;
+use function DynamixFileRecycle\boot;
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -200,10 +199,22 @@ try {
 
         case 'config_get': {
             $raw = $cfg->raw();
-            // Hide internal-only keys.
+            $supportedVolumes = [];
+            foreach ($c->fs()->supportedVolumes() as $volume) {
+                $resolved = $c->fs()->resolveVolume($volume);
+                $supportedVolumes[] = [
+                    'path' => $volume,
+                    'fs' => $resolved['fs'] ?? 'unknown',
+                ];
+            }
             respond([
                 'ok' => true,
                 'config' => $raw,
+                'supported_volumes' => $supportedVolumes,
+                'totals' => [
+                    'items' => $c->history()->countActive(),
+                    'size' => $c->history()->totalActiveSize(),
+                ],
                 'schema_version' => '1',
             ]);
         }

@@ -43,6 +43,8 @@ if (!(Test-Path -LiteralPath $nodePath -PathType Leaf)) {
 }
 & $nodePath --check 'source\dynamix.file.recycle\javascript\recycle.js'
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript syntax check failed.' }
+& $nodePath --check 'source\dynamix.file.recycle\javascript\settings.js'
+if ($LASTEXITCODE -ne 0) { throw 'Settings JavaScript syntax check failed.' }
 & $nodePath 'tests\recycle-ui.test.js'
 if ($LASTEXITCODE -ne 0) { throw 'DFM responsive UI contract failed.' }
 
@@ -82,6 +84,11 @@ if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.re
 }
 if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt' })) {
     throw 'Package is missing its Chinese Unraid menu translation.'
+}
+foreach ($asset in @('javascript/settings.js', 'javascript/settings.css')) {
+    if (!($entries | Where-Object { $_ -eq "usr/local/emhttp/plugins/dynamix.file.recycle/$asset" })) {
+        throw "Package is missing its static settings asset: $asset"
+    }
 }
 if ($entries | Where-Object { $_ -in @(
     'usr/local/emhttp/plugins/dynamix.file.recycle/settings.page',

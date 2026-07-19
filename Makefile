@@ -2,7 +2,7 @@
 #
 # Usage:
 #   make build              # build .txz + patched .plg with PLUGIN_VERSION
-#   make build PLUGIN_VERSION=2026.07.19e
+#   make build PLUGIN_VERSION=2026.07.19f
 #   make clean
 #   make check              # syntax-check all PHP/JSON/XML files
 #   make lint-php           # php -l on every PHP file

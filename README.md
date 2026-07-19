@@ -3,13 +3,13 @@
 > Chinese documentation: [README.zh.md](README.zh.md)
 
 A guarded recycle bin for the Unraid Dynamix File Manager (DFM). It adds a
-fixed **Move to Recycle Bin** button to DFM rows and atomically renames the
-selected file or directory into the owning volume's `.RecycleBin`.
+selection-aware **Recycle** action immediately after DFM's native Delete
+button and atomically renames selected files or directories into each owning
+volume's `.RecycleBin`.
 
 The current release deliberately supports only simple, verifiable storage
-layouts. The button stays visible for every DFM row; the server performs the
-authoritative check after it is clicked and shows a specific reason and advice
-when the path is unsupported.
+layouts. The server checks every selected item before confirmation and shows a
+specific reason and advice when any path is unsupported.
 
 ## Supported scope
 
@@ -74,10 +74,11 @@ Command-line installation uses the same official Plugin Manager path:
 ## Basic usage
 
 1. Open a physical disk or supported ZFS dataset in DFM.
-2. Click the recycle icon beside a file or directory.
-3. The server checks the current path, mount, filesystem and backing device.
-4. Confirm only after the check succeeds.
-5. Open **Tools -> Disk Utilities -> Dynamix File Recycle Bin**, then use
+2. Select one or more files or directories with DFM's checkboxes.
+3. Click **Recycle** immediately to the right of the native **Delete** button.
+4. The server checks every selected path, mount, filesystem and backing device.
+5. Confirm only after every check succeeds.
+6. Open **Tools -> Disk Utilities -> Dynamix File Recycle Bin**, then use
    **Open Recycle Bin** to restore or permanently purge tracked items.
 
 The Settings page lists every volume that currently passes the backend safety

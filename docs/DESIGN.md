@@ -1,13 +1,12 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19e` architecture and its conservative
+This document describes the `2026.07.19f` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
 
-The visible button is not proof that a path is supported. It is a stable DFM
-command slot. The backend makes the authoritative decision when the user
-clicks it.
+The batch action is not proof that selected paths are supported. The backend
+makes the authoritative decision after the user clicks it.
 
 An item is accepted only when all of these checks pass:
 
@@ -31,35 +30,24 @@ reason and recovery advice.
 `RecycleInject.page` uses Unraid's `Menu='Buttons:5'` page channel. It does not
 patch `Browse.page`, `HeadInlineJS.php`, or another plugin.
 
-DFM loads rows from `/webGui/include/Browse.php` through `loadList()`. The
-plugin wraps that function and temporarily intercepts the matching jQuery GET
-callback. It decorates the returned HTML before DFM inserts it into the live
-table. A `MutationObserver` is retained as a fallback for render paths that do
-not use `loadList()`.
+The plugin inserts one `input.extra` control immediately after DFM's native
+Delete control in `#buttons`. Reusing the native class means DFM's own
+`selectOne()` and `selectAll()` logic enables or disables Recycle together with
+the current checkbox selection. No per-row destructive control is added.
 
-Each canonical DFM row gets exactly one fixed-size button:
-
-- identity is derived from the row's official `i[id^="row_"][data][type]`
-  element;
-- injection is idempotent;
-- the button remains present through idle, checking, working, error and done
-  states;
-- async checks change attributes and icon state, never insert/remove the slot;
-- document-level event delegation survives full row replacement;
-- generation counters discard stale async responses.
-
-This render-time decoration is what prevents the repeated appearance,
-disappearance and layout movement seen with asynchronous eligibility probes.
+Selected paths come from the official `check_N` to `row_N[data][type]`
+mapping. The plugin validates all selected paths before showing one batch
+confirmation. Mutations then run sequentially to avoid SQLite lock contention.
 
 ## 3. Request flow
 
 ```text
-DFM row button
-  -> POST inspect(path, csrf_token)
+DFM checkbox selection + bottom Recycle action
+  -> POST inspect(path, csrf_token) for every selected item
   -> admin + scope + topology + inode checks
   <- inspection_token(path, dev, ino, mode, size, mtime, ctime, expiry)
-  -> user confirmation
-  -> POST recycle(path, inspection_token, csrf_token)
+  -> one user confirmation after all inspections succeed
+  -> sequential POST recycle(path, inspection_token, csrf_token)
   -> repeat all checks and verify the signed current inode state
   -> pending database row
   -> atomic rename into .RecycleBin

@@ -4,7 +4,7 @@
 # environment that has GNU tar + xz + sha256sum.
 #
 # Usage:
-#   PLUGIN_VERSION=2026.07.19i tools/build.sh
+#   PLUGIN_VERSION=2026.07.19j tools/build.sh
 #
 # Output:
 #   build/dynamix.file.recycle-YYYY.MM.DDx-x86_64-1.txz

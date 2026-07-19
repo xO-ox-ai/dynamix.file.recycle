@@ -80,6 +80,8 @@ https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.fil
 和自动维护都会被阻止。
 阵列磁盘和 ZFS dataset 会分成两棵层级树显示，ZFS 条目保留原生的
 “存储池/dataset/子 dataset”层级。
+当 ZFS dataset 位于阵列盘或另一个本地存储池下方时，文件始终回收到该 dataset
+自己的 `.RecycleBin`，不会回退到父磁盘或父存储池。
 
 目录示例：
 

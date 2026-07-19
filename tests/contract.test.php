@@ -60,6 +60,7 @@ foreach (['lsblk', 'zpool', "'usb'", "'RM'"] as $topologySignal) {
 }
 check(str_contains($fs, "'/var/local/emhttp/disks.ini'"), 'Unraid array/pool state is not consulted');
 check(str_contains($fs, 'unraidArrayBackingDevice'), 'diskN is not mapped to its assigned physical device');
+check(str_contains($fs, "preg_match('#^(/mnt/disk\\d+)(?:/|$)#'"), 'array child datasets do not reuse the assigned disk backing device');
 foreach (['unsupported_boot_device', 'unsupported_unassigned_device', 'unsupported_usb_storage', 'unverified_storage_topology'] as $errorCode) {
     check(str_contains($api, "'$errorCode'"), "public device-scope error code is missing: $errorCode");
 }
@@ -77,6 +78,7 @@ check(!str_contains($recycler, 'recursiveCopy'), 'recycler still contains cross-
 check(!str_contains($restorer, 'recursiveCopy'), 'restorer still contains cross-filesystem copy fallback');
 check(str_contains($recycler, 'verifyInspectionToken'), 'recycle does not bind to the inspected inode state');
 check(str_contains($recycler, 'isVolumeAllowed'), 'recycler does not enforce the configured volume allowlist');
+check(str_contains($recycler, "\$recycleRoot = \$volume['volume']"), 'recycler does not anchor data to the resolved dataset root');
 
 $settings = source('source/dynamix.file.recycle/DynamixFileRecycle.page');
 check(str_contains($settings, 'id="recycle-settings-volumes"'), 'settings page does not expose the managed-volume container');
@@ -127,6 +129,7 @@ check(str_contains($js, "window.location.pathname"), 'front-end does not identif
 check(str_contains($js, "className = 'dfm_control extra recycle-batch-action'"), 'DFM batch control does not use native selection-state classes');
 
 $settingsJs = source('source/dynamix.file.recycle/javascript/settings.js');
+$settingsCss = source('source/dynamix.file.recycle/javascript/settings.css');
 check(str_contains($settingsJs, "request('config_get')"), 'settings are not loaded through the API');
 check(str_contains($settingsJs, "request('config_save'"), 'settings are not saved through the API');
 check(str_contains($settingsJs, "'clear_logs'"), 'settings do not expose log cleanup');
@@ -134,6 +137,7 @@ check(str_contains($settingsJs, "'clear_history'"), 'settings do not expose inac
 check(str_contains($settingsJs, 'volume.hierarchy'), 'settings do not render structured volume hierarchy');
 check(strpos($settings, 'id="recycle-clear-logs"') < strpos($settings, 'data-i18n="history"'), 'log cleanup is not inside the Logging section');
 check(strpos($settings, 'id="recycle-clear-history"') < strpos($settings, 'data-i18n="maintenance"'), 'history cleanup is not inside the History section');
+check(str_contains($settingsCss, 'width: auto !important'), 'section cleanup buttons still expand to the full settings column');
 check(str_contains($api, "'supported_volumes' => \$supportedVolumes"), 'settings API does not return validated volumes');
 check(str_contains($api, "case 'clear_logs'"), 'log cleanup API action is missing');
 check(str_contains($api, "case 'clear_history'"), 'history cleanup API action is missing');

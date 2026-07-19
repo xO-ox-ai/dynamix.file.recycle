@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19i` architecture and its conservative
+This document describes the `2026.07.19j` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -83,6 +83,12 @@ Each supported array disk or ZFS dataset owns one SQLite shard. This keeps the
 metadata on the same persistence boundary as the recycled data. Global views
 open the shards on currently available, verified volumes and merge their
 results in memory.
+
+ZFS mountpoints are sorted longest-first. A path inside a child dataset is
+therefore always assigned to that dataset, never its parent disk or pool. The
+recycle directory and SQLite shard are both created under that exact resolved
+dataset root, and the same-filesystem check rejects any accidental boundary
+crossing before rename.
 
 SQLite uses WAL mode, full synchronous writes and a busy timeout. Item states
 are `pending`, `active`, `restoring`, `restored`, `purging`, and `purged`.

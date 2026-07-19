@@ -89,6 +89,9 @@ to an explicit allowlist: unchecked volumes remain visible in history, but new
 recycle, restore, purge and automatic maintenance actions are blocked there.
 Array disks and ZFS datasets are displayed as separate trees; ZFS entries keep
 their native pool/dataset hierarchy.
+When a ZFS dataset is nested below an array disk or another local pool, files
+are always recycled into that exact dataset's `.RecycleBin`; the parent volume
+is never used as a fallback.
 
 Example layout:
 

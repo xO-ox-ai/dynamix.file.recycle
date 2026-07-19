@@ -9,6 +9,16 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19j] - 2026-07-19
+
+### Fixed
+- Reused the parent `diskN` physical-device mapping when validating ZFS child
+  datasets such as `/mnt/disk1/TV_series`, restoring the missing tree level.
+- Added regression coverage proving that the longest matching dataset owns the
+  recycle root, including `/mnt/nvme_system/appdata/.RecycleBin`.
+- Constrained the cleanup buttons to their content width while retaining their
+  explicit plugin-log and deleted-item-history labels.
+
 ## [2026.07.19i] - 2026-07-19
 
 ### Fixed

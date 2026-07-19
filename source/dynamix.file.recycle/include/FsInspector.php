@@ -31,6 +31,7 @@ final class FsInspector
     private ?array $unraidDisks = null;
     /** @var list<string> */
     private array $diskStateFiles;
+    private ?\Closure $commandRunner;
 
     public const RECYCLE_NAME = '.RecycleBin';
     /** @var list<string> */
@@ -45,13 +46,17 @@ final class FsInspector
         '/mnt/addons',
     ];
 
-    /** @param list<string>|null $diskStateFiles */
-    public function __construct(?array $diskStateFiles = null)
+    /**
+     * @param list<string>|null $diskStateFiles
+     * @param callable(list<string>):?string|null $commandRunner test seam
+     */
+    public function __construct(?array $diskStateFiles = null, ?callable $commandRunner = null)
     {
         $this->diskStateFiles = $diskStateFiles ?? [
             '/var/local/emhttp/disks.ini',
             '/usr/local/emhttp/state/disks.ini',
         ];
+        $this->commandRunner = $commandRunner === null ? null : \Closure::fromCallable($commandRunner);
     }
 
     /**
@@ -324,8 +329,8 @@ final class FsInspector
             return $this->topologyCache[$key];
         }
         $devices = [];
-        if (preg_match('#^/mnt/disk\d+$#', $volume)) {
-            $device = $this->unraidArrayBackingDevice($volume);
+        if (preg_match('#^(/mnt/disk\d+)(?:/|$)#', $volume, $arrayMatch)) {
+            $device = $this->unraidArrayBackingDevice($arrayMatch[1]);
             if ($device === null) {
                 return $this->topologyCache[$key] = 'The Unraid array disk backing device could not be verified.';
             }
@@ -467,6 +472,9 @@ final class FsInspector
      */
     private function exec(array $argv): ?string
     {
+        if ($this->commandRunner !== null) {
+            return ($this->commandRunner)($argv);
+        }
         if (!$this->commandExists($argv[0])) {
             return null;
         }

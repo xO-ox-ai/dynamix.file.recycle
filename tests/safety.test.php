@@ -64,6 +64,29 @@ checkSafety(
     $arrayDeviceMethod->invoke($stateAwareFs, '/mnt/disk1') === '/dev/sda',
     'Unraid diskN did not resolve to its physical disks.ini device'
 );
+
+$zfsList = implode("\n", [
+    "/mnt/disk1\tdisk1",
+    "/mnt/disk1/TV_series\tdisk1/TV_series",
+    "/mnt/nvme_system\tnvme_system",
+    "/mnt/nvme_system/appdata\tnvme_system/appdata",
+]);
+$datasetFs = new FsInspector([$diskStateFile], static function (array $argv) use ($zfsList): ?string {
+    return $argv[0] === 'zfs' ? $zfsList : null;
+});
+$arrayDataset = $datasetFs->resolveVolume('/mnt/disk1/TV_series/show/episode.mkv');
+checkSafety(
+    ($arrayDataset['volume'] ?? '') === '/mnt/disk1/TV_series'
+        && ($arrayDataset['relative'] ?? '') === 'show/episode.mkv',
+    'Array-disk child dataset did not win over its parent disk volume'
+);
+$poolDataset = $datasetFs->resolveVolume('/mnt/nvme_system/appdata/config/settings.json');
+checkSafety(
+    ($poolDataset['volume'] ?? '') === '/mnt/nvme_system/appdata'
+        && $datasetFs->recycleRoot('/mnt/nvme_system/appdata/config/settings.json')
+            === '/mnt/nvme_system/appdata/.RecycleBin',
+    'Independent child dataset did not receive its own recycle root'
+);
 @unlink($diskStateFile);
 
 $cfg = new Config(

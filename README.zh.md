@@ -28,10 +28,75 @@
 
 ## 安装
 
-1. 在 Unraid 后台打开 **Plugins → Install Plugin**。
-2. 粘贴 Releases 中 `dynamix.file.recycle.plg` 的原始 URL。
-3. 点击 **Install**。安装完成后 **Tools → Recycle Bin** 页面即出现。
-4. 打开 **Settings → Dynamix File Recycle Bin** 启用功能并调整维护策略。
+下面两种方式任选其一。两种方式使用的插件 URL 相同：
+
+```
+https://github.com/xO-ox-ai/dynamix.file.recycle/releases/download/v2026.07.19a/dynamix.file.recycle.plg
+```
+
+> 请始终从 [Releases 页面](https://github.com/xO-ox-ai/dynamix.file.recycle/releases)
+> 复制**对应版本**的 URL。上面这条链接指向最新已发布版本。
+
+### 方式 A — 通过 Unraid 网页后台安装（推荐）
+
+1. 打开 **Plugins → Install Plugin**。
+2. 将 Releases 页面中 `.plg` 的 URL 粘贴到输入框。
+3. 点击 **Install**。插件管理器会自动下载 `.txz` 包、校验 MD5、解包并执行
+   安装钩子（注册 cron、初始化 SQLite、复制默认配置）。
+4. 安装完成后 **Tools → Recycle Bin** 页面即出现，**Plugins** 列表中也会
+   新增本插件条目，便于日后升级。
+5. 打开 **Settings → Dynamix File Recycle Bin** 启用功能并调整维护策略。
+
+### 方式 B — 通过 Unraid 命令行安装
+
+适合无界面服务器或脚本化部署。
+
+```bash
+# 1. 先把 .plg 描述文件下载到服务器。
+wget -O /tmp/dynamix.file.recycle.plg \
+  https://github.com/xO-ox-ai/dynamix.file.recycle/releases/download/v2026.07.19a/dynamix.file.recycle.plg
+
+# 2. 交给插件管理器执行。其行为与网页后台完全一致
+#    （下载 .txz → 校验 MD5 → 解包 → 执行钩子）。
+/usr/local/emhttp/plugins/dynamix/scripts/plugin install /tmp/dynamix.file.recycle.plg
+```
+
+> 若你的 Unraid 版本不在该路径暴露 `plugin install` 命令，请使用网页方式
+> 安装；最终安装结果一致。
+
+## 卸载
+
+插件默认**保留数据**：各卷下的 `.RecycleBin/` 目录以及
+`/boot/config/plugins/dynamix.file.recycle/` 中的设置都会保留，方便日后
+重装不丢数据。
+
+### 方式 A — 通过 Unraid 网页后台卸载（推荐）
+
+1. 打开 **Plugins**，在列表中找到 **Dynamix File Recycle Bin**。
+2. 点击 **齿轮图标 → Remove Plugin**（或 **Uninstall**）。
+3. 确认卸载。卸载钩子会移除 cron 任务、删除插件代码与临时状态
+   （SQLite / 日志）。
+4. *（可选）* 如需彻底清除数据与设置，执行下面的手动清理命令。
+
+### 方式 B — 通过 Unraid 命令行卸载
+
+```bash
+# 1. 执行插件自带的卸载钩子（与插件管理器使用的路径一致）。
+PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
+if [ -x "$PLUGIN_DIR/scripts/remove.sh" ]; then
+    "$PLUGIN_DIR/scripts/remove.sh"
+else
+    echo "插件目录不存在 —— 无需通过钩子卸载。"
+fi
+
+# 2. （可选）清除保留的数据：删除所有卷下的 .RecycleBin/ 目录。
+#    建议先查看一遍再删除：
+find /mnt -maxdepth 4 -type d -name .RecycleBin -print
+#    rm -rf $(find /mnt -maxdepth 4 -type d -name .RecycleBin)
+
+# 3. （可选）清除 /boot 下的持久设置（重启后仍然存在）。
+rm -rf /boot/config/plugins/dynamix.file.recycle
+```
 
 ## 使用
 

@@ -153,9 +153,17 @@ check(str_contains($binJs, "request(action, { id:"), 'Recycle Bin restore/purge 
 
 $diagnostics = source('source/dynamix.file.recycle/include/Diagnostics.php');
 check(str_contains($diagnostics, "'pdo_drivers' => \\PDO::getAvailableDrivers()"), 'diagnostics omit PDO driver availability');
+check(str_contains($diagnostics, "'sqlite_backend' => 'sqlite3-cli'"), 'diagnostics omit the active SQLite backend');
 check(str_contains($diagnostics, "'integrity_check'"), 'diagnostics omit SQLite integrity state');
 check(str_contains($diagnostics, "'zfs-list.txt'"), 'diagnostics omit ZFS topology');
 check(str_contains($recycler, "\$stage = 'rename'"), 'recycler does not log the rename stage');
+
+$sqliteConnection = source('source/dynamix.file.recycle/include/SqliteConnection.php');
+check(str_contains($sqliteConnection, "['/usr/bin/sqlite3', '/bin/sqlite3']"), 'SQLite adapter does not use Unraid bundled paths');
+check(str_contains($sqliteConnection, "proc_open(\$argv"), 'SQLite adapter invokes a shell instead of an argv process');
+check(str_contains($sqliteConnection, "CAST(X'"), 'SQLite text parameters are not encoded as syntax-safe hex literals');
+check(str_contains($sqliteConnection, 'PRAGMA synchronous=FULL'), 'SQLite CLI calls do not enforce full synchronous writes');
+check(!str_contains($history, 'new \\PDO'), 'history still requires a missing PDO SQLite driver');
 
 $menuLanguage = source('source/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt');
 check(str_contains($menuLanguage, 'Dynamix File Recycle Bin=文件回收站'), 'Chinese Unraid menu translation is missing');

@@ -178,7 +178,20 @@ final class Config
             return [];
         }
         $parsed = @parse_ini_string(file_get_contents($file), true, INI_SCANNER_RAW);
-        return is_array($parsed) ? $parsed : [];
+        if (!is_array($parsed)) {
+            return [];
+        }
+        foreach ($parsed as &$section) {
+            if (!is_array($section)) continue;
+            foreach ($section as &$value) {
+                if (is_string($value)) {
+                    $value = $this->decodeValue($value);
+                }
+            }
+            unset($value);
+        }
+        unset($section);
+        return $parsed;
     }
 
     private function getBool(string $section, string $key, bool $fallback): bool
@@ -219,6 +232,13 @@ final class Config
         // Always quote: simplest and safest for round-trip.
         $esc = str_replace(['\\', '"'], ['\\\\', '\\"'], $v);
         return '"' . $esc . '"';
+    }
+
+    /** Reverse the escaping performed by encodeValue(). INI_SCANNER_RAW
+     * strips the surrounding quotes but deliberately preserves backslashes. */
+    private function decodeValue(string $v): string
+    {
+        return str_replace(['\\"', '\\\\'], ['"', '\\'], $v);
     }
 
     /** @internal Used by the settings page. */

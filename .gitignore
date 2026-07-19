@@ -18,6 +18,7 @@ Thumbs.db
 
 # Local dev state
 .local/
+.tools/
 tmp/
 
 # Keep the screenshots folder tracked (placeholder)

@@ -5,11 +5,13 @@
 # minimal and avoids re-implementing maintenance logic in bash.
 set -uo pipefail
 
-# Prefer the per-unraid PHP binary; fall back to whatever is on PATH.
-PHP_BIN="${PHP_BIN:-/usr/local/bin/php}"
-if [ ! -x "$PHP_BIN" ]; then
-    PHP_BIN="$(command -v php || true)"
+# Prefer Unraid's current PHP path, retain the older path as a fallback.
+if [ -z "${PHP_BIN:-}" ]; then
+    for candidate in /usr/bin/php /usr/local/bin/php; do
+        if [ -x "$candidate" ]; then PHP_BIN="$candidate"; break; fi
+    done
 fi
+if [ -z "${PHP_BIN:-}" ]; then PHP_BIN="$(command -v php || true)"; fi
 if [ -z "$PHP_BIN" ]; then
     echo "dynamix.file.recycle: php interpreter not found, aborting" >&2
     exit 0   # do not fail cron

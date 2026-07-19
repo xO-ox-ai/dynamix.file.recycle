@@ -31,6 +31,23 @@ if ($LASTEXITCODE -ne 0) { throw 'Core contract tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Localization contract tests failed.' }
 & $phpPath 'tests\safety.test.php'
 if ($LASTEXITCODE -ne 0) { throw 'Safety unit tests failed.' }
+$sqlite = Get-Command sqlite3 -ErrorAction SilentlyContinue
+if ($sqlite) {
+    $sqlitePath = $sqlite.Source
+} else {
+    $sqlitePath = Join-Path $root '.tools\sqlite\sqlite3.exe'
+}
+if (!(Test-Path -LiteralPath $sqlitePath -PathType Leaf)) {
+    throw 'SQLite CLI is required for database adapter tests.'
+}
+$previousSqlite = $env:DYNAMIX_RECYCLE_SQLITE
+$env:DYNAMIX_RECYCLE_SQLITE = $sqlitePath
+try {
+    & $phpPath 'tests\sqlite-cli.test.php'
+    if ($LASTEXITCODE -ne 0) { throw 'SQLite CLI adapter tests failed.' }
+} finally {
+    $env:DYNAMIX_RECYCLE_SQLITE = $previousSqlite
+}
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if ($node) {

@@ -40,9 +40,10 @@ software alone.
 
 | Component | Requirement |
 |---|---|
-| Unraid OS | 7.3.2 or newer |
+| Unraid OS | 7.2.4 or newer |
 | Dynamix File Manager | Installed |
-| PHP | Unraid-bundled PHP 8.x with PDO SQLite |
+| PHP | Unraid-bundled PHP 8.x |
+| SQLite | Unraid-bundled `/usr/bin/sqlite3` command-line client |
 | ZFS support | Unraid `zfs`, `zpool` and `lsblk` tools |
 
 ## Install

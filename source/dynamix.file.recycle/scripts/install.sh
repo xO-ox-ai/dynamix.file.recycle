@@ -10,6 +10,10 @@ STATE_DIR="/usr/local/emhttp/state/plugins/dynamix.file.recycle"
 LOG_DIR="$STATE_DIR/logs"
 AUDIT_DIR="$CFG_DIR/logs"
 RUN_DIR="/run/dynamix.file.recycle"
+PHP_BIN=""
+for candidate in /usr/bin/php /usr/local/bin/php; do
+  if [[ -x "$candidate" ]]; then PHP_BIN="$candidate"; break; fi
+done
 
 # 1. Persistent config dir (under /boot so it survives reboot).
 mkdir -p "$CFG_DIR"
@@ -28,8 +32,8 @@ rm -f /usr/local/emhttp/languages/zh_CN/dynamix.file.recycle.txt
 rm -f /usr/local/emhttp/languages/zh_CN/dynamix.file.recycle.dot
 
 # 4. Initialise runtime state and reconcile any currently available shards.
-if [[ -x /usr/local/bin/php ]]; then
-  /usr/local/bin/php "$PLUGIN_DIR/include/Bootstrap.php" init
+if [[ -n "$PHP_BIN" ]]; then
+  "$PHP_BIN" "$PLUGIN_DIR/include/Bootstrap.php" init
 fi
 
 # 5. Make the scheduled-cleanup wrapper executable.
@@ -42,8 +46,8 @@ rm -f /etc/cron.hourly/dynamix.file.recycle
 rm -f /etc/logrotate.d/dynamix.file.recycle
 
 # 7. Generate a cron entry only when the user configured a cleanup schedule.
-if [[ -x /usr/local/bin/php ]]; then
-  /usr/local/bin/php "$PLUGIN_DIR/include/Bootstrap.php" sync-cron
+if [[ -n "$PHP_BIN" ]]; then
+  "$PHP_BIN" "$PLUGIN_DIR/include/Bootstrap.php" sync-cron
 fi
 
 echo "Dynamix File Recycle Bin installed."

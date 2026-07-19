@@ -287,6 +287,12 @@ try {
                 fail('No config payload supplied.', 400);
             }
             $patch = $c->security()->sanitizeConfigPatch($payload);
+            $selectedVolumes = $patch['volumes']['allowed'] ?? null;
+            $logger->debug(
+                'config_save',
+                '',
+                'selected_volumes=' . ($selectedVolumes === null ? 'unchanged' : $selectedVolumes)
+            );
             $cfg->mergeAndSave($patch);
             $c->scheduler()->sync();
             respond(['ok' => true]);

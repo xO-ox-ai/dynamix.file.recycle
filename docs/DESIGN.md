@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19k` architecture and its conservative
+This document describes the `2026.07.19l` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -55,7 +55,7 @@ successful or partially successful mutation.
 DEBUG logging records the dataset resolution, history-open, destination,
 filesystem-device, pending-row, rename and finalization stages. Settings can
 download a temporary `.tar.gz` support bundle containing these logs plus
-bounded storage, ZFS, mount, PHP/PDO and SQLite state snapshots.
+bounded storage, ZFS, mount, PHP and SQLite state snapshots.
 
 ## 3. Request flow
 
@@ -99,7 +99,11 @@ recycle directory and SQLite shard are both created under that exact resolved
 dataset root, and the same-filesystem check rejects any accidental boundary
 crossing before rename.
 
-SQLite uses WAL mode, full synchronous writes and a busy timeout. Item states
+SQLite uses Unraid's bundled `/usr/bin/sqlite3` client because the WebGUI PHP
+build does not expose a PDO SQLite driver. The adapter starts sqlite3 directly
+with an argument array, never a shell command, and encodes bound text as hex
+SQL literals. Databases use WAL mode, full synchronous writes and a busy
+timeout. Item states
 are `pending`, `active`, `restoring`, `restored`, `purging`, and `purged`.
 Transitional states are written before filesystem mutations. Opening a shard
 reconciles interrupted transitions against the source, destination and purge
@@ -163,7 +167,7 @@ Community Applications metadata is provided by `ca_profile.xml` and
 - No `/mnt/user`, cache/pool, UD, remote, boot-device or USB workflow.
 - No cross-filesystem recycle or restore.
 - No symbolic-link or nested-mount handling.
-- DFM and Unraid 7.3.2 are the initial compatibility target.
+- DFM on Unraid 7.2.4 and newer is the compatibility target; current real-system testing is on 7.3.2.
 - Software can detect USB/removable transport but cannot always prove a disk's
   physical enclosure. eSATA is the common ambiguous case.
 - A volume that is offline is absent from the global history view until it is

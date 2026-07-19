@@ -42,8 +42,8 @@ final class Diagnostics
                 'processes.txt' => ['ps', '-eo', 'pid,ppid,state,lstart,comm,args'],
                 'syslog-tail.txt' => ['tail', '-n', '2500', '/var/log/syslog'],
                 'dmesg-warnings.txt' => ['dmesg', '--ctime', '--level=err,warn'],
-                'php-modules.txt' => ['/usr/local/bin/php', '-m'],
-                'php-ini.txt' => ['/usr/local/bin/php', '--ini'],
+                'php-modules.txt' => ['/usr/bin/php', '-m'],
+                'php-ini.txt' => ['/usr/bin/php', '--ini'],
                 'sqlite-version.txt' => ['sqlite3', '--version'],
             ];
             foreach ($commands as $name => $argv) {
@@ -55,7 +55,11 @@ final class Diagnostics
                 'generated_at' => gmdate('c'),
                 'plugin_version' => is_file(ROOT . '/VERSION') ? trim((string) file_get_contents(ROOT . '/VERSION')) : 'unknown',
                 'php_version' => PHP_VERSION,
+                'php_binary' => PHP_BINARY,
                 'pdo_drivers' => \PDO::getAvailableDrivers(),
+                'sqlite3_extension_loaded' => extension_loaded('sqlite3'),
+                'sqlite_backend' => 'sqlite3-cli',
+                'sqlite_binary' => SqliteConnection::findBinary(),
                 'uname' => php_uname('a'),
                 'config' => $this->config->raw(),
                 'volumes' => $this->volumeSnapshot($stage),
@@ -112,14 +116,14 @@ final class Diagnostics
             ];
             if ($entry['database_exists']) {
                 try {
-                    $pdo = new \PDO('sqlite:' . $db);
-                    $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+                    $pdo = $this->history->databaseForVolume($volume, false);
+                    if ($pdo === null) throw new \RuntimeException('SQLite database disappeared during diagnostics.');
                     $entry['integrity_check'] = $pdo->query('PRAGMA integrity_check')->fetchColumn();
-                    $entry['state_counts'] = $pdo->query('SELECT state,COUNT(*) AS count FROM items GROUP BY state')->fetchAll(\PDO::FETCH_ASSOC);
+                    $entry['state_counts'] = $pdo->query('SELECT state,COUNT(*) AS count FROM items GROUP BY state')->fetchAll();
                     $entry['recent_items'] = $pdo->query(
                         'SELECT id,volume,original_path,recycle_path,size,is_dir,deleted_at,state,purged_at,purged_reason,operation_target '
                         . 'FROM items ORDER BY deleted_at DESC LIMIT 100'
-                    )->fetchAll(\PDO::FETCH_ASSOC);
+                    )->fetchAll();
                 } catch (\Throwable $e) {
                     $entry['database_error'] = $e->getMessage();
                 }

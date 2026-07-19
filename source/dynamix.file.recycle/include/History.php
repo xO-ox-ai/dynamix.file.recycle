@@ -21,7 +21,7 @@ final class History
     private Config $config;
     private Logger $logger;
 
-    /** @var array<string,\PDO> */
+    /** @var array<string,SqliteConnection> */
     private array $connections = [];
 
     public function __construct(FsInspector $fs, Config $config, Logger $logger)
@@ -34,7 +34,7 @@ final class History
     public function initSchema(): void
     {
         foreach ($this->managedVolumes() as $volume) {
-            $this->pdoForVolume($volume, false);
+            $this->databaseForVolume($volume, false);
         }
     }
 
@@ -43,7 +43,7 @@ final class History
         return rtrim($volume, '/') . '/' . FsInspector::RECYCLE_NAME . '/' . self::DB_NAME;
     }
 
-    public function pdoForVolume(string $volume, bool $create = true): ?\PDO
+    public function databaseForVolume(string $volume, bool $create = true): ?SqliteConnection
     {
         $canonical = $this->fs->normalise($volume);
         $this->logger->debug('history_open_start', $volume, 'canonical=' . ($canonical ?? 'null') . ' create=' . ($create ? '1' : '0'));
@@ -62,6 +62,9 @@ final class History
         if (is_link($root) || is_link($dbFile)) {
             throw new \RuntimeException('Recycle history path must not be a symbolic link.', 409);
         }
+        // Verify the database backend before creating .RecycleBin. Unraid
+        // ships sqlite3 even though its WebGUI PHP build has no PDO drivers.
+        $pdo = new SqliteConnection($dbFile);
         if (!is_dir($root) && (!@mkdir($root, 0700, false) || !is_dir($root))) {
             throw new \RuntimeException('Unable to create the per-volume recycle directory.', 500);
         }
@@ -73,9 +76,6 @@ final class History
             'root=' . $root . ' dev=' . (int) ($rootStat['dev'] ?? -1) . ' db_exists=' . (is_file($dbFile) ? '1' : '0')
         );
 
-        $pdo = new \PDO('sqlite:' . $dbFile);
-        $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
-        $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
         $pdo->exec('PRAGMA journal_mode=WAL');
         $pdo->exec('PRAGMA synchronous=FULL');
         $pdo->exec('PRAGMA foreign_keys=ON');
@@ -100,7 +100,7 @@ final class History
     public function insertItem(array $data): string
     {
         $id = (string) ($data['id'] ?? self::newId());
-        $pdo = $this->pdoForVolume((string) $data['volume']);
+        $pdo = $this->databaseForVolume((string) $data['volume']);
         $stmt = $pdo->prepare(
             'INSERT INTO items
              (id, volume, recycle_path, original_path, size, is_dir, owner_uid,
@@ -133,7 +133,7 @@ final class History
             return null;
         }
         foreach ($this->existingVolumes() as $volume) {
-            $pdo = $this->pdoForVolume($volume, false);
+            $pdo = $this->databaseForVolume($volume, false);
             if ($pdo === null) {
                 continue;
             }
@@ -154,7 +154,7 @@ final class History
 
     public function markActive(string $id, string $volume): bool
     {
-        $pdo = $this->pdoForVolume($volume, false);
+        $pdo = $this->databaseForVolume($volume, false);
         if ($pdo === null) return false;
         $stmt = $pdo->prepare("UPDATE items SET state='active' WHERE id=:id AND state='pending'");
         $stmt->execute([':id' => $id]);
@@ -163,7 +163,7 @@ final class History
 
     public function deletePending(string $id, string $volume): void
     {
-        $pdo = $this->pdoForVolume($volume, false);
+        $pdo = $this->databaseForVolume($volume, false);
         if ($pdo === null) return;
         $stmt = $pdo->prepare("DELETE FROM items WHERE id=:id AND state='pending'");
         $stmt->execute([':id' => $id]);
@@ -178,7 +178,7 @@ final class History
     {
         $row = $this->findById($id);
         if ($row === null || $row['state'] !== $from) return false;
-        $pdo = $this->pdoForVolume((string) $row['volume'], false);
+        $pdo = $this->databaseForVolume((string) $row['volume'], false);
         if ($pdo === null) return false;
         $stmt = $pdo->prepare(
             'UPDATE items SET state=:to,operation_target=:target WHERE id=:id AND state=:from'
@@ -191,7 +191,7 @@ final class History
     {
         $row = $this->findById($id);
         if ($row === null) return;
-        $pdo = $this->pdoForVolume((string) $row['volume'], false);
+        $pdo = $this->databaseForVolume((string) $row['volume'], false);
         if ($pdo === null) return;
         $stmt = $pdo->prepare(
             'UPDATE items SET state=:to,operation_target=NULL WHERE id=:id AND state=:from'
@@ -213,7 +213,7 @@ final class History
     {
         $rows = [];
         foreach ($this->managedVolumes() as $volume) {
-            $pdo = $this->pdoForVolume($volume, false);
+            $pdo = $this->databaseForVolume($volume, false);
             if ($pdo === null) continue;
             $stmt = $pdo->prepare("SELECT * FROM items WHERE state='active' AND deleted_at<:cutoff");
             $stmt->execute([':cutoff' => $cutoff]);
@@ -229,7 +229,7 @@ final class History
         }
         $rows = [];
         foreach ($this->managedVolumes() as $volume) {
-            $pdo = $this->pdoForVolume($volume, false);
+            $pdo = $this->databaseForVolume($volume, false);
             if ($pdo === null) continue;
             $stmt = $pdo->prepare('SELECT * FROM items WHERE state=:state ORDER BY deleted_at ASC');
             $stmt->execute([':state' => $state]);
@@ -240,12 +240,12 @@ final class History
 
     public function listOldestActive(string $volume, int $limit = 100): array
     {
-        $pdo = $this->pdoForVolume($volume, false);
+        $pdo = $this->databaseForVolume($volume, false);
         if ($pdo === null) return [];
         $stmt = $pdo->prepare(
             "SELECT * FROM items WHERE state='active' ORDER BY deleted_at ASC LIMIT :limit"
         );
-        $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $limit, SqliteStatement::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
     }
@@ -271,7 +271,7 @@ final class History
         $cutoff = time() - $days * 86400;
         $count = 0;
         foreach ($this->managedVolumes() as $volume) {
-            $pdo = $this->pdoForVolume($volume, false);
+            $pdo = $this->databaseForVolume($volume, false);
             if ($pdo === null) continue;
             $stmt = $pdo->prepare('DELETE FROM events WHERE ts<:cutoff');
             $stmt->execute([':cutoff' => $cutoff]);
@@ -286,7 +286,7 @@ final class History
         $cutoff = time() - $days * 86400;
         $count = 0;
         foreach ($this->managedVolumes() as $volume) {
-            $pdo = $this->pdoForVolume($volume, false);
+            $pdo = $this->databaseForVolume($volume, false);
             if ($pdo === null) continue;
             $stmt = $pdo->prepare(
                 "DELETE FROM items WHERE state IN ('restored','purged')
@@ -303,7 +303,7 @@ final class History
     {
         $count = 0;
         foreach ($this->existingVolumes() as $volume) {
-            $pdo = $this->pdoForVolume($volume, false);
+            $pdo = $this->databaseForVolume($volume, false);
             if ($pdo === null) continue;
             $count += $pdo->exec('DELETE FROM events');
         }
@@ -318,7 +318,7 @@ final class History
     {
         $count = 0;
         foreach ($this->existingVolumes() as $volume) {
-            $pdo = $this->pdoForVolume($volume, false);
+            $pdo = $this->databaseForVolume($volume, false);
             if ($pdo === null) continue;
             $count += $pdo->exec("DELETE FROM items WHERE state IN ('restored','purged')");
         }
@@ -328,7 +328,7 @@ final class History
     public function recordEvent(string $volume, string $level, string $action, string $path, string $message): void
     {
         try {
-            $pdo = $this->pdoForVolume($volume, true);
+            $pdo = $this->databaseForVolume($volume, true);
             $stmt = $pdo->prepare(
                 'INSERT INTO events(ts,level,action,path,message) VALUES(:ts,:level,:action,:path,:message)'
             );
@@ -344,7 +344,7 @@ final class History
     public function vacuum(): void
     {
         foreach ($this->managedVolumes() as $volume) {
-            $this->pdoForVolume($volume, false)?->exec('VACUUM');
+            $this->databaseForVolume($volume, false)?->exec('VACUUM');
         }
     }
 
@@ -384,7 +384,7 @@ final class History
     {
         $row = $this->findById($id);
         if ($row === null || !in_array($row['state'], $fromStates, true)) return false;
-        $pdo = $this->pdoForVolume((string) $row['volume'], false);
+        $pdo = $this->databaseForVolume((string) $row['volume'], false);
         if ($pdo === null) return false;
         if (!$this->config->getHistoryEnabled()) {
             $stmt = $pdo->prepare('DELETE FROM items WHERE id=:id');
@@ -406,10 +406,10 @@ final class History
         $volumes = $volume !== null ? [$volume] : $this->existingVolumes();
         $rows = [];
         foreach ($volumes as $candidate) {
-            $pdo = $this->pdoForVolume($candidate, false);
+            $pdo = $this->databaseForVolume($candidate, false);
             if ($pdo === null) continue;
             $stmt = $pdo->prepare("SELECT * FROM items WHERE $where ORDER BY deleted_at DESC LIMIT :limit");
-            $stmt->bindValue(':limit', $limit + $offset, \PDO::PARAM_INT);
+            $stmt->bindValue(':limit', $limit + $offset, SqliteStatement::PARAM_INT);
             $stmt->execute();
             array_push($rows, ...$stmt->fetchAll());
         }
@@ -422,7 +422,7 @@ final class History
         $sum = 0;
         $volumes = $volume !== null ? [$volume] : $this->existingVolumes();
         foreach ($volumes as $candidate) {
-            $pdo = $this->pdoForVolume($candidate, false);
+            $pdo = $this->databaseForVolume($candidate, false);
             if ($pdo !== null) {
                 $sum += (int) $pdo->query("SELECT $expression FROM items WHERE $where")->fetchColumn();
             }
@@ -466,7 +466,7 @@ INSERT OR IGNORE INTO meta(k,v) VALUES('schema_version','2');
 SQL;
     }
 
-    private function recoverPending(string $volume, \PDO $pdo): void
+    private function recoverPending(string $volume, SqliteConnection $pdo): void
     {
         foreach ($pdo->query("SELECT * FROM items WHERE state='pending'")->fetchAll() as $row) {
             $sourceExists = file_exists((string) $row['original_path']) || is_link((string) $row['original_path']);

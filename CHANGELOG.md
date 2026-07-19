@@ -9,6 +9,24 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19l] - 2026-07-19
+
+### Fixed
+- Restored saved managed-volume selections by reversing plugin INI escaping
+  after `INI_SCANNER_RAW` parsing. Existing incorrectly read configurations
+  recover automatically without manual file edits.
+- Replaced the unavailable PDO SQLite driver with Unraid's bundled `sqlite3`
+  command-line client. Values are bound as syntax-safe hex literals and the
+  process is launched with an argv array rather than through a shell.
+- Corrected PHP CLI discovery to prefer `/usr/bin/php` on Unraid 7.3 while
+  retaining `/usr/local/bin/php` compatibility for older installations.
+- Corrected diagnostics to inspect the actual Unraid PHP binary.
+
+### Tested
+- Added a real SQLite 3.53.3 integration test covering schema creation,
+  parameterized path round trips, inserts, updates, deletes and integer limits.
+- Added a configuration save/reload regression test for volume JSON.
+
 ## [2026.07.19k] - 2026-07-19
 
 ### Added

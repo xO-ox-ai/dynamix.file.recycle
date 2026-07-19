@@ -86,7 +86,7 @@ final class Recycler
             // directory before any item is moved.
             $stage = 'history_open';
             $this->logger->debug('recycle_history_open', $canonical, 'trace=' . $trace . ' root=' . $recycleRoot);
-            $this->history->pdoForVolume($volume['volume'], true);
+            $this->history->databaseForVolume($volume['volume'], true);
             $stage = 'destination_prepare';
             $this->ensureDestinationDirectory($destDir, $recycleRoot);
             $dest = $destDir . '/' . basename($canonical) . '.__recycle_' . $id;

@@ -8,7 +8,8 @@ Icon="icon-u-recycle"
  *
  * Pure documentation; no POST handling.
  */
-$version = '1.0.0';
+$versionFile = __DIR__ . '/VERSION';
+$version = is_file($versionFile) ? trim((string) file_get_contents($versionFile)) : 'unknown';
 ?>
 <div class="recycle-about">
 <h2>Dynamix File Recycle Bin / 文件回收站</h2>
@@ -20,7 +21,9 @@ $version = '1.0.0';
 <ul>
     <li>Adds a "Move to Recycle Bin" button to every row in the Dynamix File Manager (Browse page).</li>
     <li>Files and folders are moved to a per-volume <code>.RecycleBin</code> directory instead of being deleted.</li>
-    <li>v1 supports <code>/mnt/disk*</code> data drives and ZFS datasets. <code>/mnt/user</code> and <code>/mnt/cache*</code> are intentionally out of scope.</li>
+    <li>Supports verified internal <code>/mnt/disk*</code> data drives and local ZFS datasets.</li>
+    <li>User shares, cache/pools, UD/external mounts, remote paths, USB/removable media, and the Unraid boot device are rejected after click with an explicit reason.</li>
+    <li>Settings provides a validated switch for every currently supported disk or dataset.</li>
     <li>Open <b>Settings → Dynamix File Recycle Bin</b> to enable, configure maintenance, log level, history recording, and language.</li>
     <li>Open <b>Tools → Recycle Bin</b> to browse, restore, or permanently purge items.</li>
 </ul>
@@ -29,7 +32,9 @@ $version = '1.0.0';
 <ul>
     <li>在 Dynamix File Manager（Browse 页面）的每一行上添加"移入回收站"按钮。</li>
     <li>文件与文件夹会被移动到对应卷的 <code>.RecycleBin</code> 目录，而不是被永久删除。</li>
-    <li>v1 支持 <code>/mnt/disk*</code> 数据盘和 ZFS dataset。<code>/mnt/user</code> 与 <code>/mnt/cache*</code> 暂不支持。</li>
+    <li>支持经过验证的内部 <code>/mnt/disk*</code> 数据盘和本地 ZFS dataset。</li>
+    <li>用户共享、缓存池、UD/外置挂载、远程路径、USB/可移动介质和 Unraid 启动盘都会在点击后给出明确拒绝原因。</li>
+    <li>设置页会为当前受支持的每个磁盘或 dataset 提供经过后端验证的管理开关。</li>
     <li>打开 <b>Settings → Dynamix File Recycle Bin</b> 启用插件并配置维护、日志级别、历史记录和语言。</li>
     <li>打开 <b>Tools → Recycle Bin</b> 浏览、还原或永久删除回收站内容。</li>
 </ul>
@@ -49,6 +54,12 @@ $version = '1.0.0';
     &nbsp;|&nbsp;
     所有写操作均要求管理员登录；路径会被规范化并限制在原卷内；CSRF 由 Unraid 官方
     <code>auto_prepend</code> 校验，插件不重复实现。
+</p>
+
+<h3>Diagnostics / 诊断日志</h3>
+<p>
+    Runtime / 运行日志：<code>/usr/local/emhttp/state/plugins/dynamix.file.recycle/logs/dynamix.file.recycle.log</code><br>
+    Persistent errors / 持久错误：<code>/boot/config/plugins/dynamix.file.recycle/logs/audit.log</code>
 </p>
 </div>
 <style>

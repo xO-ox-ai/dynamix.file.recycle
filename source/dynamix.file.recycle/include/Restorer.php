@@ -1,15 +1,5 @@
 <?php
-/**
- * Restorer.php — move an item from the recycle bin back to its original path.
- *
- *   1. Look up the item row by id or token (must be state='active').
- *   2. Validate the recycle_path still exists.
- *   3. Compute the original_path. If something now occupies it, append
- *      "__restored_<ts>" suffix to the basename (never overwrite).
- *   4. Move (rename if same FS, copy+rm otherwise).
- *   5. Re-apply owner/group/mode from the recorded metadata.
- *   6. Mark the item state='restored' in history.
- */
+/** Same-filesystem restore implementation for per-volume recycle shards. */
 
 declare(strict_types=1);
 
@@ -17,138 +7,107 @@ namespace DynamixFileRecycle;
 
 final class Restorer
 {
-    private FsInspector $fs;
-    private History $history;
-    private Logger $logger;
-    private Config $cfg;
+    public function __construct(
+        private FsInspector $fs,
+        private History $history,
+        private Logger $logger,
+        private Config $cfg,
+        private Security $security,
+        private OperationLock $lock
+    ) {}
 
-    public function __construct(FsInspector $fs, History $history, Logger $logger, Config $cfg)
+    public function restore(string $itemId): array
     {
-        $this->fs = $fs;
-        $this->history = $history;
-        $this->logger = $logger;
-        $this->cfg = $cfg;
-    }
-
-    public function restore(int $itemId): array
-    {
-        $row = $this->history->findById($itemId);
-        if ($row === null) {
-            return ['ok' => false, 'error' => 'Item not found.'];
-        }
-        if ($row['state'] !== 'active') {
-            return ['ok' => false, 'error' => 'Item is not in the recycle bin (state=' . $row['state'] . ').'];
-        }
-        $src = $this->fs->normalise($row['recycle_path']);
-        if ($src === null || !file_exists($src)) {
-            // Recycle file is gone without a DB update. Mark it purged.
-            $this->history->markPurged($itemId, 'manual');
-            return ['ok' => false, 'error' => 'Recycle copy is missing on disk; history marked purged.'];
-        }
-
-        $original = $this->fs->normalise($row['original_path']);
-        if ($original === null) {
-            return ['ok' => false, 'error' => 'Original path is invalid.'];
-        }
-
-        // Ensure original parent dir exists.
-        $parent = dirname($original);
-        if (!is_dir($parent)) {
-            if (!@mkdir($parent, 0755, true) && !is_dir($parent)) {
-                return ['ok' => false, 'error' => 'Cannot recreate original parent directory: ' . $parent];
+        return $this->lock->run(function () use ($itemId): array {
+            $row = $this->history->findById($itemId);
+            if ($row === null) {
+                throw new \RuntimeException('Recycle item was not found on any online supported volume.', 404);
             }
-        }
+            if ($row['state'] !== 'active') {
+                throw new \RuntimeException('Only active recycle items can be restored.', 409);
+            }
+            $volume = (string) $row['volume'];
+            if (!$this->cfg->isVolumeAllowed($volume)) {
+                throw new \RuntimeException('Recycle management is disabled for this disk or ZFS dataset. Enable it in the plugin settings and try again.', 409);
+            }
+            $src = $this->security->assertRecyclePath((string) $row['recycle_path'], $volume);
+            if (!file_exists($src) || is_link($src)) {
+                throw new \RuntimeException('The recycle item is missing or is no longer an ordinary file or directory.', 409);
+            }
 
-        // Conflict resolution: never overwrite.
-        $dest = $original;
-        if (file_exists($dest)) {
-            $dir  = dirname($original);
-            $base = basename($original);
-            $dot  = strrpos($base, '.');
-            $name = $dot === false || $dot === 0 ? $base : substr($base, 0, $dot);
-            $ext  = $dot === false || $dot === 0 ? ''  : substr($base, $dot);
-            $dest = $dir . '/' . $name . '__restored_' . date('Ymd_His') . $ext;
-        }
+            $original = $this->fs->lexicalNormalise((string) $row['original_path']);
+            if ($original === null || $this->fs->unsupportedPathReason($original) !== null) {
+                throw new \RuntimeException('The stored original path is no longer supported.', 409);
+            }
+            $resolved = $this->fs->resolveVolume($original);
+            if ($resolved === null || $resolved['volume'] !== $volume || $original === $volume) {
+                throw new \RuntimeException('Restore refused because the original path no longer belongs to the same volume or dataset.', 409);
+            }
 
-        // Move.
-        if ($this->fs->sameFilesystem($src, $dest)) {
+            $parent = dirname($original);
+            $this->ensureParentDirectory($parent, $volume);
+            $dest = $this->availableRestorePath($original);
+            if (!$this->fs->sameFilesystem($src, $dest)) {
+                throw new \RuntimeException('Cross-filesystem restore is not supported in this release.', 409);
+            }
+            if (!$this->history->beginTransition($itemId, 'active', 'restoring', $dest)) {
+                throw new \RuntimeException('The recycle item state changed before restore could begin.', 409);
+            }
             if (!@rename($src, $dest)) {
-                return ['ok' => false, 'error' => 'rename() failed during restore.'];
+                $this->history->rollbackTransition($itemId, 'restoring', 'active');
+                throw new \RuntimeException('The atomic restore move failed.', 500);
             }
-        } else {
-            $copyErr = $this->recursiveCopy($src, $dest);
-            if ($copyErr !== null) {
-                return ['ok' => false, 'error' => $copyErr];
+            if (!$this->history->markRestored($itemId)) {
+                $this->logger->error('restore_finalize', $dest, 'item restored but database state could not be finalized');
+                throw new \RuntimeException('The item was restored, but its audit state needs automatic repair.', 500);
             }
-            $this->recursiveRemove($src);
-        }
 
-        // Re-apply metadata.
-        if ($this->cfg->getPreserveMetadata()) {
-            $mode = $row['mode'] !== null ? (octdec((string) $row['mode']) & 07777) : null;
-            if ($mode !== null) {
-                @chmod($dest, $mode);
+            if ($this->cfg->getPreserveMetadata()) {
+                if ($row['mode'] !== null) @chmod($dest, ((int) $row['mode']) & 07777);
+                if ($row['owner_uid'] !== null) @chown($dest, (int) $row['owner_uid']);
+                if ($row['owner_gid'] !== null) @chgrp($dest, (int) $row['owner_gid']);
+                if ($row['mtime'] !== null) @touch($dest, (int) $row['mtime']);
             }
-            if ($row['owner_uid'] !== null) {
-                @chown($dest, (int) $row['owner_uid']);
-            }
-            if ($row['owner_gid'] !== null) {
-                @chgrp($dest, (int) $row['owner_gid']);
-            }
-            if ($row['mtime'] !== null) {
-                @touch($dest, (int) $row['mtime']);
-            }
-        }
-
-        $this->history->markRestored($itemId);
-        $this->logger->info('restore', $src, 'restored to ' . $dest);
-        return [
-            'ok'      => true,
-            'restored_to' => $dest,
-            'conflict' => $dest !== $original,
-        ];
+            $this->history->recordEvent($volume, 'AUDIT', 'restore', $src, 'restored atomically to ' . $dest);
+            $this->logger->info('restore', $src, 'restored atomically to ' . $dest);
+            return ['ok' => true, 'restored_to' => $dest, 'conflict' => $dest !== $original];
+        });
     }
 
-    /**
-     * Standalone recursive copy used during restore. Factored out so we don't
-     * depend on the Recycler instance (which is built per-request).
-     */
-    private function recursiveCopy(string $src, string $dst): ?string
+    private function ensureParentDirectory(string $parent, string $volume): void
     {
-        if (is_dir($src)) {
-            if (!is_dir($dst) && !@mkdir($dst, 0700, true) && !is_dir($dst)) {
-                return 'mkdir failed: ' . $dst;
-            }
-            foreach (new \FilesystemIterator($src, \FilesystemIterator::SKIP_DOTS) as $entry) {
-                $err = $this->recursiveCopy($entry->getPathname(), $dst . '/' . $entry->getFilename());
-                if ($err !== null) {
-                    return $err;
-                }
-            }
-            return null;
+        if ($parent !== $volume && !str_starts_with($parent, $volume . '/')) {
+            throw new \RuntimeException('Restore parent escaped the owning volume.', 409);
         }
-        if (is_link($src)) {
-            $target = @readlink($src);
-            return $target === false || !@symlink($target, $dst)
-                ? 'symlink failed: ' . $dst
-                : null;
+        $relative = ltrim(substr($parent, strlen($volume)), '/');
+        $current = $volume;
+        foreach ($relative === '' ? [] : explode('/', $relative) as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                throw new \RuntimeException('Restore parent contains an unsafe path component.', 409);
+            }
+            $current .= '/' . $segment;
+            if (is_link($current)) {
+                throw new \RuntimeException('Restore refused because a parent directory is a symbolic link.', 409);
+            }
+            if (!is_dir($current) && (!@mkdir($current, 0755, false) || !is_dir($current))) {
+                throw new \RuntimeException('Unable to recreate the original parent directory.', 500);
+            }
         }
-        return @copy($src, $dst) ? null : ('copy failed: ' . $src . ' -> ' . $dst);
+        $resolved = realpath($current);
+        if ($resolved === false || ($resolved !== $volume && !str_starts_with($resolved, $volume . '/'))) {
+            throw new \RuntimeException('Restore parent escaped the owning volume.', 409);
+        }
     }
 
-    private function recursiveRemove(string $path): void
+    private function availableRestorePath(string $original): string
     {
-        if (is_link($path)) {
-            @unlink($path);
-            return;
+        if (!file_exists($original) && !is_link($original)) return $original;
+        $dir = dirname($original);
+        $base = basename($original);
+        for ($attempt = 0; $attempt < 32; $attempt++) {
+            $candidate = $dir . '/' . $base . '.__restored_' . gmdate('Ymd_His') . '_' . bin2hex(random_bytes(3));
+            if (!file_exists($candidate) && !is_link($candidate)) return $candidate;
         }
-        if (is_dir($path)) {
-            foreach (new \FilesystemIterator($path, \FilesystemIterator::SKIP_DOTS) as $entry) {
-                $this->recursiveRemove($entry->getPathname());
-            }
-            @rmdir($path);
-            return;
-        }
-        @unlink($path);
+        throw new \RuntimeException('Unable to allocate a non-conflicting restore path.', 409);
     }
 }

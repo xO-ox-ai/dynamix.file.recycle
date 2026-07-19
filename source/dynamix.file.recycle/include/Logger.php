@@ -7,7 +7,7 @@
  *
  * Rotation: when the log file exceeds logMaxMib, the current file is renamed
  * to .1 (overwriting any previous .1) and a new file is started. Date-based
- * purging of log ROWS in the SQLite `log` table happens in Maintenance.
+ * persistent operation events are recorded in each volume's SQLite shard.
  */
 
 declare(strict_types=1);
@@ -18,21 +18,22 @@ final class Logger
 {
     private const LEVELS = ['ERROR' => 0, 'WARN' => 1, 'INFO' => 2, 'DEBUG' => 3];
     private string $file;
+    private string $auditFile;
     private int $level;
-    private int $retentionDays;
     private int $maxBytes;
 
-    public function __construct(string $file, string $level, int $retentionDays, int $logMaxMib)
+    public function __construct(string $file, string $auditFile, string $level, int $logMaxMib)
     {
         $this->file = $file;
+        $this->auditFile = $auditFile;
         $this->level = self::LEVELS[strtoupper($level)] ?? self::LEVELS['INFO'];
-        $this->retentionDays = max(0, $retentionDays);
         $this->maxBytes = max(1, $logMaxMib) * 1024 * 1024;
     }
 
     public function error(string $action, string $path, string $message): void
     {
         $this->write('ERROR', $action, $path, $message);
+        $this->writeAudit('ERROR', $action, $path, $message);
     }
 
     public function warn(string $action, string $path, string $message): void
@@ -48,6 +49,11 @@ final class Logger
     public function debug(string $action, string $path, string $message): void
     {
         $this->write('DEBUG', $action, $path, $message);
+    }
+
+    public function audit(string $action, string $path, string $message): void
+    {
+        $this->writeAudit('AUDIT', $action, $path, $message);
     }
 
     private function write(string $level, string $action, string $path, string $message): void
@@ -75,7 +81,7 @@ final class Logger
 
     /**
      * Rotate the file when it grows past maxBytes. We keep a single backup
-     * (.1) — that plus the SQLite `log` table is enough for most audits.
+     * (.1). Errors are also copied into the bounded persistent audit log.
      */
     private function maybeRotate(): void
     {
@@ -90,6 +96,37 @@ final class Logger
             @unlink($backup);
         }
         @rename($this->file, $backup);
+    }
+
+    private function writeAudit(string $level, string $action, string $path, string $message): void
+    {
+        $dir = dirname($this->auditFile);
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0700, true);
+        }
+        $this->rotateFile($this->auditFile, 1024 * 1024);
+        $line = sprintf(
+            "%s [%s] %s path=%s msg=%s\n",
+            gmdate('c'),
+            $level,
+            $action,
+            $this->tokenize($path),
+            $this->sanitize($message)
+        );
+        @file_put_contents($this->auditFile, $line, FILE_APPEND | LOCK_EX);
+        @chmod($this->auditFile, 0600);
+    }
+
+    private function rotateFile(string $file, int $maxBytes): void
+    {
+        if (!is_file($file) || (int) @filesize($file) < $maxBytes) {
+            return;
+        }
+        $backup = $file . '.1';
+        if (is_file($backup)) {
+            @unlink($backup);
+        }
+        @rename($file, $backup);
     }
 
     /**

@@ -10,18 +10,19 @@ Icon="icon-u-recycle"
  * every label shows both English and 中文 inline so the page is readable in
  * any system language.
  *
- * On POST we save via api.php?action=config_save (which itself goes through
- * Unraid's auto_prepend CSRF verification), then redirect back with a
- * confirmation. We never touch /boot directly from this page.
+ * On POST Unraid's auto_prepend performs CSRF verification before this page;
+ * the same Security sanitizer used by api.php validates the patch before the
+ * persistent Config object commits it atomically.
  */
 
 require_once __DIR__ . '/include/Bootstrap.php';
 use function DynamixFileRecycle\boot;
-use DynamixFileRecycle\STATE_DIR;
 
 $c = boot();
+$c->security()->assertAdmin();
 $cfg = $c->config();
 $i18n = $c->i18n();
+$supportedVolumes = $c->fs()->supportedVolumes();
 
 $saved = false;
 $error = null;
@@ -57,8 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'enabled'        => isset($_POST['history_enabled']) ? '1' : '0',
                 'retention_days' => $_POST['history_retention_days'] ?? '365',
             ],
+            'volumes' => [
+                'allowed' => $_POST['allowed_volumes'] ?? [],
+            ],
             'maintenance' => [
-                'interval_hours'      => $_POST['interval_hours'] ?? '1',
                 'age_days'            => $_POST['age_days'] ?? '30',
                 'capacity_mode'       => $_POST['capacity_mode'] ?? 'percent',
                 'capacity_percent'    => $_POST['capacity_percent'] ?? '10',
@@ -67,15 +70,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'vacuum_sqlite'       => isset($_POST['vacuum_sqlite']) ? '1' : '0',
             ],
             'security' => [
-                'preserve_metadata'      => isset($_POST['preserve_metadata']) ? '1' : '0',
-                'allow_user_self_service'=> isset($_POST['allow_user_self_service']) ? '1' : '0',
+                'preserve_metadata' => isset($_POST['preserve_metadata']) ? '1' : '0',
             ],
         ];
         $patch = $c->security()->sanitizeConfigPatch($raw);
         $cfg->mergeAndSave($patch);
+        $c->scheduler()->sync();
         $saved = true;
     } catch (\Throwable $e) {
-        $error = $e->getMessage();
+        $error = str_contains($e->getMessage(), 'selected disk or dataset')
+            ? $i18n->t('error.invalid_volume_selection')
+            : $e->getMessage();
     }
 }
 
@@ -91,6 +96,7 @@ $enZh = function (string $en, string $zh): string {
 
 $totalItems = $c->history()->countActive();
 $totalSize  = $c->history()->totalActiveSize();
+$allowedVolumes = $cfg->getAllowedVolumes();
 ?>
 <div class="recycle-settings">
 <?php if ($saved): ?>
@@ -136,6 +142,39 @@ $totalSize  = $c->history()->totalActiveSize();
             </td>
         </tr>
 
+        <tr class="section"><td colspan="2"><?= $enZh('Managed disks and datasets', '允许回收管理的磁盘和 dataset') ?></td></tr>
+        <tr>
+            <td><?= $enZh('Enabled volumes', '已启用的卷') ?></td>
+            <td>
+                <?php if ($supportedVolumes === []): ?>
+                    <span class="hint"><?= $enZh(
+                        'No volume currently passes the supported internal-storage checks.',
+                        '当前没有通过内部存储安全检查的磁盘或 dataset。'
+                    ) ?></span>
+                <?php else: ?>
+                    <div class="recycle-volume-list">
+                    <?php foreach ($supportedVolumes as $volume): ?>
+                        <?php
+                            $resolvedVolume = $c->fs()->resolveVolume($volume);
+                            $checked = $allowedVolumes === null || in_array($volume, $allowedVolumes, true);
+                        ?>
+                        <label class="recycle-volume-option">
+                            <input type="checkbox" name="allowed_volumes[]"
+                                value="<?= htmlspecialchars($volume, ENT_QUOTES) ?>"
+                                <?= $checked ? 'checked' : '' ?>>
+                            <code><?= htmlspecialchars($volume, ENT_QUOTES) ?></code>
+                            <span class="hint"><?= htmlspecialchars(strtoupper((string) ($resolvedVolume['fs'] ?? 'unknown')), ENT_QUOTES) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                    </div>
+                    <span class="hint"><?= $enZh(
+                        'Only listed volumes can be saved. Unchecked volumes remain visible in history, but recycle, restore, purge and automatic maintenance are blocked.',
+                        '只能保存页面列出的卷。未勾选卷的历史仍可查看，但会阻止回收、还原、永久清理和自动维护。'
+                    ) ?></span>
+                <?php endif; ?>
+            </td>
+        </tr>
+
         <tr class="section"><td colspan="2"><?= $enZh('Logging', '日志') ?></td></tr>
         <tr>
             <td><label for="log_level"><?= $enZh('Log level', '日志级别') ?></label></td>
@@ -149,11 +188,11 @@ $totalSize  = $c->history()->totalActiveSize();
         </tr>
         <tr>
             <td><label for="log_retention_days"><?= $enZh('Log retention (days)', '日志保留（天）') ?></label></td>
-            <td><input type="number" id="log_retention_days" name="log_retention_days" min="0" value="<?= (int) $v('global', 'log_retention_days', 30) ?>"> <span class="hint">0 = keep forever / 0 = 永久保留</span></td>
+            <td><input type="number" id="log_retention_days" name="log_retention_days" min="0" max="3650" value="<?= (int) $v('global', 'log_retention_days', 30) ?>"> <span class="hint">0 = keep forever / 0 = 永久保留</span></td>
         </tr>
         <tr>
             <td><label for="log_max_size_mib"><?= $enZh('Log size cap (MiB)', '日志大小上限（MiB）') ?></label></td>
-            <td><input type="number" id="log_max_size_mib" name="log_max_size_mib" min="1" value="<?= (int) $v('global', 'log_max_size_mib', 5) ?>"></td>
+            <td><input type="number" id="log_max_size_mib" name="log_max_size_mib" min="1" max="100" value="<?= (int) $v('global', 'log_max_size_mib', 5) ?>"></td>
         </tr>
 
         <tr class="section"><td colspan="2"><?= $enZh('History', '历史记录') ?></td></tr>
@@ -170,17 +209,20 @@ $totalSize  = $c->history()->totalActiveSize();
         </tr>
         <tr>
             <td><label for="history_retention_days"><?= $enZh('History retention (days)', '历史保留（天）') ?></label></td>
-            <td><input type="number" id="history_retention_days" name="history_retention_days" min="0" value="<?= (int) $v('history', 'retention_days', 365) ?>"></td>
+            <td><input type="number" id="history_retention_days" name="history_retention_days" min="0" max="36500" value="<?= (int) $v('history', 'retention_days', 365) ?>"></td>
         </tr>
 
         <tr class="section"><td colspan="2"><?= $enZh('Maintenance', '维护策略') ?></td></tr>
         <tr>
-            <td><label for="interval_hours"><?= $enZh('Run interval (hours)', '运行间隔（小时）') ?></label></td>
-            <td><input type="number" id="interval_hours" name="interval_hours" min="1" value="<?= $cfg->getMaintenanceIntervalHours() ?>"></td>
+            <td><?= $enZh('Execution policy', '执行策略') ?></td>
+            <td><span class="hint"><?= $enZh(
+                'These policies run only with the user-scheduled cleanup below or an explicit manual maintenance action.',
+                '以下策略只会随用户设置的定时清理运行，或由用户明确手动触发。'
+            ) ?></span></td>
         </tr>
         <tr>
             <td><label for="age_days"><?= $enZh('Age eviction (days)', '年龄淘汰（天）') ?></label></td>
-            <td><input type="number" id="age_days" name="age_days" min="0" value="<?= $cfg->getAgeDays() ?>"> <span class="hint">0 = disabled / 0 = 禁用</span></td>
+            <td><input type="number" id="age_days" name="age_days" min="0" max="36500" value="<?= $cfg->getAgeDays() ?>"> <span class="hint">0 = disabled / 0 = 禁用</span></td>
         </tr>
         <tr>
             <td><label for="capacity_mode"><?= $enZh('Capacity mode', '容量模式') ?></label></td>
@@ -197,13 +239,13 @@ $totalSize  = $c->history()->totalActiveSize();
         </tr>
         <tr>
             <td><label for="capacity_absolute_gb"><?= $enZh('Capacity absolute (GiB)', '容量绝对值（GiB）') ?></label></td>
-            <td><input type="number" id="capacity_absolute_gb" name="capacity_absolute_gb" min="0" value="<?= $cfg->getCapacityAbsoluteGb() ?>"></td>
+            <td><input type="number" id="capacity_absolute_gb" name="capacity_absolute_gb" min="0" max="1048576" value="<?= $cfg->getCapacityAbsoluteGb() ?>"></td>
         </tr>
         <tr>
-            <td><label for="auto_empty_cron"><?= $enZh('Auto-empty schedule (cron)', '自动清空时间（cron）') ?></label></td>
+            <td><label for="auto_empty_cron"><?= $enZh('Scheduled cleanup (cron)', '定时清理（cron）') ?></label></td>
             <td>
                 <input type="text" id="auto_empty_cron" name="auto_empty_cron" value="<?= htmlspecialchars($cfg->getAutoEmptyCron(), ENT_QUOTES) ?>" placeholder="0 3 * * 0">
-                <span class="hint">e.g. "0 3 * * 0" = every Sunday 03:00. Empty = disabled / 例："0 3 * * 0" = 每周日 03:00。空 = 禁用</span>
+                <span class="hint">This is the only automatic background task. At the selected time it empties enabled bins and performs maintenance. "0 3 * * 0" = Sunday 03:00. Empty = no scheduled work / 这是唯一的自动后台任务；到点后清空已启用回收站并顺便维护。“0 3 * * 0” = 每周日 03:00。留空 = 不运行定时任务</span>
             </td>
         </tr>
         <tr>
@@ -216,14 +258,6 @@ $totalSize  = $c->history()->totalActiveSize();
             <td><label for="preserve_metadata"><?= $enZh('Preserve metadata', '保留元数据') ?></label></td>
             <td><input class="switch" type="checkbox" id="preserve_metadata" name="preserve_metadata" <?= $cfg->getPreserveMetadata() ? 'checked' : '' ?>></td>
         </tr>
-        <tr>
-            <td><label for="allow_user_self_service"><?= $enZh('Allow non-admin self-service', '允许非管理员自助') ?></label></td>
-            <td>
-                <input class="switch" type="checkbox" id="allow_user_self_service" name="allow_user_self_service" <?= $cfg->getAllowUserSelfService() ? 'checked' : '' ?>>
-                <span class="hint"><?= $enZh('Experimental. Off = admin-only.', '实验性。关闭 = 仅管理员。') ?></span>
-            </td>
-        </tr>
-
         <tr class="section"><td colspan="2"><?= $enZh('Status', '状态') ?></td></tr>
         <tr>
             <td><?= $enZh('Active items', '当前条目') ?></td>
@@ -234,8 +268,12 @@ $totalSize  = $c->history()->totalActiveSize();
             <td><code><?= htmlspecialchars(\DynamixFileRecycle\LOG_FILE, ENT_QUOTES) ?></code></td>
         </tr>
         <tr>
-            <td><?= $enZh('SQLite', 'SQLite 数据库') ?></td>
-            <td><code><?= htmlspecialchars(\DynamixFileRecycle\DB_FILE, ENT_QUOTES) ?></code></td>
+            <td><?= $enZh('Persistent error audit', '持久错误审计') ?></td>
+            <td><code><?= htmlspecialchars(\DynamixFileRecycle\AUDIT_FILE, ENT_QUOTES) ?></code></td>
+        </tr>
+        <tr>
+            <td><?= $enZh('SQLite layout', 'SQLite 布局') ?></td>
+            <td><code>&lt;volume&gt;/.RecycleBin/<?= htmlspecialchars(\DynamixFileRecycle\History::DB_NAME, ENT_QUOTES) ?></code></td>
         </tr>
 
         <tr>
@@ -254,4 +292,7 @@ $totalSize  = $c->history()->totalActiveSize();
 .recycle-settings table.settings td:first-child{ width: 38%; }
 .recycle-settings .hint{ color: var(--hint-text, #888); font-size: 12px; display: block; margin-top: 4px; }
 .recycle-settings code{ background: rgba(127,127,127,.15); padding: 1px 4px; border-radius: 3px; }
+.recycle-settings .recycle-volume-list{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:6px 16px; margin-bottom:8px; }
+.recycle-settings .recycle-volume-option{ display:flex; align-items:center; gap:8px; min-height:28px; }
+.recycle-settings .recycle-volume-option .hint{ display:inline; margin:0; }
 </style>

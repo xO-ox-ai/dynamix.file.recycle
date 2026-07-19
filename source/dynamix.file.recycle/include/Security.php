@@ -5,14 +5,14 @@
  *   - assertAdmin()    require an authenticated admin session (Unraid)
  *   - assertEnabled()  require the plugin master switch to be on
  *   - assertPathInScope($absPath)   require a path within a v1 volume
- *   - itemToken($absPath)           stable opaque ID for the front-end
- *   - decodeItemToken($token)       reverse of itemToken()
+ *   - issueInspectionToken()        sign the currently inspected inode state
+ *   - verifyInspectionToken()       re-check that state before mutation
  *
  * Tokens are signed with HMAC-SHA256 over the absolute path using a per-host
- * secret stored under STATE_DIR. They are NOT security by themselves — the
- * server always re-validates the path on every call — but they prevent users
- * from casually forging arbitrary targets in the front-end and they keep the
- * front-end DOM stable across refreshes (the token depends only on the path).
+ * volatile secret stored under STATE_DIR. They are not authorization by
+ * themselves: the server repeats admin, path, topology and inode checks on
+ * every request. Tokens expire after two minutes and intentionally become
+ * invalid after reboot.
  */
 
 declare(strict_types=1);
@@ -22,13 +22,11 @@ namespace DynamixFileRecycle;
 final class Security
 {
     private FsInspector $fs;
-    private History $history;
     private ?string $secret = null;
 
-    public function __construct(FsInspector $fs, History $history)
+    public function __construct(FsInspector $fs)
     {
         $this->fs = $fs;
-        $this->history = $history;
     }
 
     /**
@@ -67,9 +65,20 @@ final class Security
      */
     public function assertPathInScope(string $absPath): string
     {
+        $unsupported = $this->fs->unsupportedPathReason($absPath);
+        if ($unsupported !== null) {
+            throw new \RuntimeException($unsupported, 409);
+        }
+        $lexical = $this->fs->lexicalNormalise($absPath);
         $canonical = $this->fs->normalise($absPath);
-        if ($canonical === null) {
+        if ($canonical === null || $lexical === null) {
             throw new \RuntimeException('Invalid or escaping path.', 400);
+        }
+        if ($canonical !== $lexical) {
+            throw new \RuntimeException('Symbolic-link or aliased paths are not supported in this release.', 409);
+        }
+        if (is_link($canonical)) {
+            throw new \RuntimeException('Symbolic links are not supported in this release.', 409);
         }
         if (!$this->fs->isInScope($canonical)) {
             throw new \RuntimeException(
@@ -84,38 +93,93 @@ final class Security
         if (str_ends_with($canonical, '/' . FsInspector::RECYCLE_NAME)) {
             throw new \RuntimeException('Cannot operate on the recycle bin itself.', 400);
         }
+        $volume = $this->fs->resolveVolume($canonical);
+        if ($volume === null || $canonical === $volume['volume']) {
+            throw new \RuntimeException('A disk or ZFS dataset root cannot be moved to its own recycle bin.', 409);
+        }
+        $externalReason = $this->fs->externalStorageReason($volume['volume'], $volume['fs']);
+        if ($externalReason !== null) {
+            throw new \RuntimeException($externalReason, 409);
+        }
+        $stat = @lstat($canonical);
+        if ($stat === false) {
+            throw new \RuntimeException('The selected item no longer exists.', 404);
+        }
+        $type = ((int) $stat['mode']) & 0170000;
+        if (!in_array($type, [0100000, 0040000], true)) {
+            throw new \RuntimeException('Only regular files and ordinary directories are supported in this release.', 409);
+        }
+        if ($type === 0040000 && $this->fs->hasMountAtOrBelow($canonical)) {
+            throw new \RuntimeException('The selected directory is or contains a mount point and cannot be recycled safely.', 409);
+        }
+        $volumeStat = @stat($volume['volume']);
+        if ($volumeStat === false || (int) $stat['dev'] !== (int) $volumeStat['dev']) {
+            throw new \RuntimeException('The item crosses a filesystem boundary; this release only supports atomic same-filesystem moves.', 409);
+        }
         return $canonical;
     }
 
-    /**
-     * Produce a stable opaque token for an absolute path. Same path => same
-     * token across requests, regardless of the file existing or not.
-     */
-    public function itemToken(string $absPath): string
+    public function issueInspectionToken(string $canonical): string
     {
-        $canonical = $this->fs->normalise($absPath) ?? $absPath;
-        $sig = hash_hmac('sha256', $canonical, $this->secret());
-        // Trim to keep DOM attribute values short; 16 hex bytes = 64 bits,
-        // collisions astronomically unlikely per server.
-        return substr($sig, 0, 32) . '.' . substr(bin2hex($canonical), 0, 0);
+        $canonical = $this->assertPathInScope($canonical);
+        $stat = @lstat($canonical);
+        if ($stat === false) {
+            throw new \RuntimeException('The selected item no longer exists.', 404);
+        }
+        $payload = [
+            'v' => 1,
+            'path' => $canonical,
+            'dev' => (int) $stat['dev'],
+            'ino' => (int) $stat['ino'],
+            'mode' => (int) $stat['mode'],
+            'size' => (int) $stat['size'],
+            'mtime' => (int) $stat['mtime'],
+            'ctime' => (int) $stat['ctime'],
+            'exp' => time() + 120,
+        ];
+        $encoded = $this->base64UrlEncode((string) json_encode($payload, JSON_UNESCAPED_SLASHES));
+        $signature = $this->base64UrlEncode(hash_hmac('sha256', $encoded, $this->secret(), true));
+        return $encoded . '.' . $signature;
     }
 
-    /**
-     * Decode a token back to a path. Because the token is HMAC'd, decoding is
-     * really "find the path whose token matches this" — but the canonical path
-     * itself is sent along with the token from the front-end, so we just
-     * re-sign the supplied path and compare. Returns the canonical path on
-     * match, throws otherwise.
-     */
-    public function decodeItemToken(string $token, string $claimedPath): string
+    public function verifyInspectionToken(string $token, string $claimedPath): string
     {
-        $canonical = $this->fs->normalise($claimedPath);
-        if ($canonical === null) {
-            throw new \RuntimeException('Invalid path supplied with token.', 400);
+        $parts = explode('.', $token, 2);
+        if (count($parts) !== 2 || strlen($token) > 2048) {
+            throw new \RuntimeException('The inspection approval is malformed. Check the item again.', 409);
         }
-        $expected = $this->itemToken($canonical);
-        if (!hash_equals($expected, $token)) {
-            throw new \RuntimeException('Token mismatch.', 403);
+        [$encoded, $signature] = $parts;
+        $expected = $this->base64UrlEncode(hash_hmac('sha256', $encoded, $this->secret(), true));
+        if (!hash_equals($expected, $signature)) {
+            throw new \RuntimeException('The inspection approval is invalid. Check the item again.', 409);
+        }
+        $decoded = $this->base64UrlDecode($encoded);
+        $payload = $decoded === null ? null : json_decode($decoded, true);
+        if (!is_array($payload) || ($payload['v'] ?? null) !== 1 || (int) ($payload['exp'] ?? 0) < time()) {
+            throw new \RuntimeException('The inspection approval expired. Check the item again.', 409);
+        }
+        $canonical = $this->assertPathInScope($claimedPath);
+        if (!hash_equals((string) ($payload['path'] ?? ''), $canonical)) {
+            throw new \RuntimeException('The inspected path does not match this request.', 409);
+        }
+        $stat = @lstat($canonical);
+        foreach (['dev', 'ino', 'mode', 'size', 'mtime', 'ctime'] as $field) {
+            if ($stat === false || (int) ($payload[$field] ?? -1) !== (int) ($stat[$field] ?? -2)) {
+                throw new \RuntimeException('The item changed after inspection. Check it again before recycling.', 409);
+            }
+        }
+        return $canonical;
+    }
+
+    public function assertRecyclePath(string $path, string $volume): string
+    {
+        $canonical = $this->fs->normalise($path);
+        if ($canonical === null || is_link($path) || !$this->fs->isInsideRecycleRoot($canonical, $volume)) {
+            throw new \RuntimeException('Stored recycle path escaped its owning recycle bin.', 409);
+        }
+        if (basename($canonical) === History::DB_NAME
+            || str_starts_with(basename($canonical), History::DB_NAME . '-')) {
+            throw new \RuntimeException('The recycle metadata database cannot be modified as an item.', 409);
         }
         return $canonical;
     }
@@ -134,25 +198,26 @@ final class Security
                 'enabled'           => 'boolString',
                 'language'          => 'enum:auto,en_US,zh_CN',
                 'log_level'         => 'enum:ERROR,WARN,INFO,DEBUG',
-                'log_retention_days'=> 'int',
-                'log_max_size_mib'  => 'int',
+                'log_retention_days'=> 'int:0:3650',
+                'log_max_size_mib'  => 'int:1:100',
             ],
             'history' => [
                 'enabled'        => 'boolString',
-                'retention_days' => 'int',
+                'retention_days' => 'int:0:36500',
+            ],
+            'volumes' => [
+                'allowed' => 'volumeList',
             ],
             'maintenance' => [
-                'interval_hours'      => 'int',
-                'age_days'            => 'int',
+                'age_days'            => 'int:0:36500',
                 'capacity_mode'       => 'enum:percent,absolute',
-                'capacity_percent'    => 'int',
-                'capacity_absolute_gb'=> 'int',
+                'capacity_percent'    => 'int:0:100',
+                'capacity_absolute_gb'=> 'int:0:1048576',
                 'auto_empty_cron'     => 'cron',
                 'vacuum_sqlite'       => 'boolString',
             ],
             'security' => [
                 'preserve_metadata'      => 'boolString',
-                'allow_user_self_service'=> 'boolString',
             ],
         ];
 
@@ -178,7 +243,10 @@ final class Security
         if (str_starts_with($rule, 'enum:')) {
             $choices = explode(',', substr($rule, 5));
             $v = (string) $v;
-            return in_array($v, $choices, true) ? $v : '';
+            if (!in_array($v, $choices, true)) {
+                throw new \RuntimeException('A configuration option contains an unsupported value.', 400);
+            }
+            return $v;
         }
         if ($rule === 'boolString') {
             if (is_bool($v)) {
@@ -187,18 +255,80 @@ final class Security
             $s = strtolower((string) $v);
             return in_array($s, ['1','true','yes','on'], true) ? '1' : '0';
         }
-        if ($rule === 'int') {
-            return (string) max(0, (int) $v);
+        if ($rule === 'volumeList') {
+            if (!is_array($v) || count($v) > 128) {
+                throw new \RuntimeException('The selected volume list is invalid.', 400);
+            }
+            $approved = [];
+            foreach ($v as $volume) {
+                if (!is_string($volume) || strlen($volume) > 1024) {
+                    throw new \RuntimeException('The selected volume list contains an invalid path.', 400);
+                }
+                $lexical = $this->fs->lexicalNormalise($volume);
+                $canonical = $this->fs->normalise($volume);
+                if ($lexical === null || $canonical === null || $lexical !== $canonical
+                    || !$this->fs->isApprovedVolumeRoot($canonical)) {
+                    throw new \RuntimeException(
+                        'A selected disk or dataset is outside the currently supported internal-storage scope. Refresh the page and select only listed volumes.',
+                        409
+                    );
+                }
+                $approved[$canonical] = true;
+            }
+            return (string) json_encode(array_keys($approved), JSON_UNESCAPED_SLASHES);
+        }
+        if (str_starts_with($rule, 'int:')) {
+            [, $minimum, $maximum] = explode(':', $rule, 3);
+            if (filter_var($v, FILTER_VALIDATE_INT) === false) {
+                throw new \RuntimeException('A numeric configuration value is invalid.', 400);
+            }
+            $number = (int) $v;
+            if ($number < (int) $minimum || $number > (int) $maximum) {
+                throw new \RuntimeException('A numeric configuration value is outside the allowed range.', 400);
+            }
+            return (string) $number;
         }
         if ($rule === 'cron') {
-            // 5 whitespace-separated fields, very permissive.
             $s = preg_replace('/\s+/', ' ', trim((string) $v));
-            if ($s === '' || substr_count($s, ' ') === 4) {
+            if ($s === '') {
                 return $s;
             }
-            return '';
+            $fields = explode(' ', $s);
+            $ranges = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]];
+            if (count($fields) !== 5) {
+                throw new \RuntimeException('The auto-empty schedule is not a supported five-field cron expression.', 400);
+            }
+            foreach ($fields as $index => $field) {
+                if (!$this->validCronField($field, $ranges[$index][0], $ranges[$index][1])) {
+                    throw new \RuntimeException('The auto-empty schedule is not a supported five-field cron expression.', 400);
+                }
+            }
+            return $s;
         }
         return '';
+    }
+
+    private function validCronField(string $field, int $minimum, int $maximum): bool
+    {
+        foreach (explode(',', $field) as $part) {
+            if ($part === '*') continue;
+            if (preg_match('/\A\*\/([1-9][0-9]*)\z/', $part, $match) === 1) {
+                if ((int) $match[1] <= ($maximum - $minimum + 1)) continue;
+                return false;
+            }
+            if (preg_match('/\A([0-9]+)-([0-9]+)\z/', $part, $match) === 1) {
+                $low = (int) $match[1];
+                $high = (int) $match[2];
+                if ($low >= $minimum && $high <= $maximum && $low <= $high) continue;
+                return false;
+            }
+            if (ctype_digit($part)) {
+                $number = (int) $part;
+                if ($number >= $minimum && $number <= $maximum) continue;
+            }
+            return false;
+        }
+        return true;
     }
 
     private function secret(): string
@@ -218,5 +348,19 @@ final class Security
         @file_put_contents($file, $s, LOCK_EX);
         @chmod($file, 0600);
         return $this->secret = $s;
+    }
+
+    private function base64UrlEncode(string $value): string
+    {
+        return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
+    }
+
+    private function base64UrlDecode(string $value): ?string
+    {
+        if ($value === '' || preg_match('/\A[A-Za-z0-9_-]+\z/', $value) !== 1) {
+            return null;
+        }
+        $decoded = base64_decode(strtr($value, '-_', '+/'), true);
+        return $decoded === false ? null : $decoded;
     }
 }

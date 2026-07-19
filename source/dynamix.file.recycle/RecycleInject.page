@@ -12,8 +12,7 @@ Title='Dynamix File Recycle Bin'
  * official DFM BrowseButton.page (Buttons:3a) already uses.
  *
  * Rank 5 makes us load AFTER DFM (3a), so when the Browse page renders, our
- * <script> can find the DFM globals (window.doAction, window.doActions) and
- * wrap them.
+ * <script> can wrap DFM's loadList() before its initial jQuery-ready call.
  *
  * The injected JSON object `window.__recycleRuntime` carries:
  *   - csrfToken   string   (read from $var, NOT hardcoded in JS)
@@ -22,7 +21,6 @@ Title='Dynamix File Recycle Bin'
  *   - i18n        object   translations the JS needs
  *   - enabled     bool     master switch
  *   - browse      bool     whether we are currently on a Browse page
- *   - scopeRoots  string[] /mnt/disk* and ZFS dataset roots currently visible
  *
  * The script itself is loaded from javascript/recycle.js and is intentionally
  * self-contained (no jQuery dependency beyond what DFM already pulls in).
@@ -37,11 +35,6 @@ require_once $bootFile;
 
 use function DynamixFileRecycle\boot;
 
-$c = boot();
-$cfg = $c->config();
-$i18n = $c->i18n();
-$fs = $c->fs();
-
 // Only emit on Browse pages. $myPage is provided by DefaultPageLayout.php.
 $onBrowse = isset($myPage) && is_array($myPage) && (($myPage['name'] ?? '') === 'Browse');
 // Also accept the case where we are on /Main/Browse (URL-based).
@@ -51,6 +44,16 @@ if (!$onBrowse) {
         $onBrowse = true;
     }
 }
+if (!$onBrowse) {
+    return;
+}
+
+$c = boot();
+$cfg = $c->config();
+if (!$cfg->getEnabled()) {
+    return;
+}
+$i18n = $c->i18n();
 
 // Read CSRF token from Unraid state. Prefer $var (already-loaded dynamix
 // globals), fall back to parsing var.ini ourselves.
@@ -68,25 +71,13 @@ if ($csrf === '') {
     }
 }
 
-// Collect visible scope roots: every /mnt/diskN present on disk plus ZFS
-// dataset mounts under /mnt. We hand this to JS so it can pre-classify
-// button state without round-tripping for every row.
-$scopeRoots = [];
-foreach (glob('/mnt/disk*', GLOB_ONLYDIR) as $d) {
-    $scopeRoots[] = $d;
-}
-foreach ($fs->zfsRootsForFrontend() as $r) {
-    $scopeRoots[] = $r;
-}
-
 $runtime = [
     'csrfToken'  => $csrf,
     'apiBase'    => $pluginRoot . '/api.php',
     'lang'       => $i18n->lang(),
-    'enabled'    => $cfg->getEnabled(),
-    'browse'     => $onBrowse,
+    'enabled'    => true,
+    'browse'     => true,
     'history'    => $cfg->getHistoryEnabled(),
-    'scopeRoots' => $scopeRoots,
     'i18n' => [
         'btnTitle'         => $i18n->t('btn.title'),
         'btnTitleBlocked'  => $i18n->t('btn.title.blocked'),
@@ -99,16 +90,30 @@ $runtime = [
         'confirmRecycle'   => $i18n->t('confirm.recycle'),
         'doneMessage'      => $i18n->t('done.message'),
         'errorMessage'     => $i18n->t('error.message'),
-        // Cross-filesystem confirmation (two-step recycle protocol).
-        'crossFsTitle'     => $i18n->t('crossfs.title'),
-        'crossFsBody'      => $i18n->t('crossfs.body'),
-        'crossFsFilePrompt'=> $i18n->t('crossfs.file.prompt'),
-        'crossFsDirPrompt' => $i18n->t('crossfs.dir.prompt'),
-        'crossFsQuestion'  => $i18n->t('crossfs.question'),
+        'errors' => [
+            'unsupported_boot_device'       => $i18n->t('error.unsupported_boot_device'),
+            'unsupported_user_share'        => $i18n->t('error.unsupported_user_share'),
+            'unsupported_cache_pool'        => $i18n->t('error.unsupported_cache_pool'),
+            'unsupported_unassigned_device' => $i18n->t('error.unsupported_unassigned_device'),
+            'unsupported_remote_path'       => $i18n->t('error.unsupported_remote_path'),
+            'unsupported_usb_storage'       => $i18n->t('error.unsupported_usb_storage'),
+            'unsupported_removable_storage' => $i18n->t('error.unsupported_removable_storage'),
+            'unverified_storage_topology'   => $i18n->t('error.unverified_storage_topology'),
+            'unsupported_nested_mount'      => $i18n->t('error.unsupported_nested_mount'),
+            'unsupported_symbolic_link'     => $i18n->t('error.unsupported_symbolic_link'),
+            'unsupported_cross_filesystem'  => $i18n->t('error.unsupported_cross_filesystem'),
+            'unsupported_path'              => $i18n->t('error.unsupported_path'),
+            'volume_management_disabled'    => $i18n->t('error.volume_management_disabled'),
+            'invalid_volume_selection'      => $i18n->t('error.invalid_volume_selection'),
+        ],
     ],
 ];
 
-$runtimeJson = json_encode($runtime, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+$runtimeJson = json_encode(
+    $runtime,
+    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+        | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+);
 ?>
 <link rel="stylesheet" href="<?= htmlspecialchars($pluginRoot . '/javascript/recycle.css', ENT_QUOTES) ?>" data-recycle-asset="css">
 <script>

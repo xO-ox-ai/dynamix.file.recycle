@@ -20,6 +20,7 @@ require_once __DIR__ . '/include/Bootstrap.php';
 use function DynamixFileRecycle\boot;
 
 $c = boot();
+$c->security()->assertAdmin();
 $cfg = $c->config();
 $i18n = $c->i18n();
 $fs = $c->fs();
@@ -49,6 +50,9 @@ $stateLabel = [
     'active'   => 'Active / 当前',
     'restored' => 'Restored / 已还原',
     'purged'   => 'Purged / 已清理',
+    'pending'  => 'Recovering / 恢复中',
+    'restoring'=> 'Restoring / 正在还原',
+    'purging'  => 'Purging / 正在清理',
 ];
 ?>
 <div class="recycle-bin">
@@ -66,7 +70,6 @@ $stateLabel = [
     <table class="settings" id="recycle-table">
         <thead>
         <tr>
-            <th class="col-check"><input type="checkbox" id="recycle-select-all"></th>
             <th>State / 状态</th>
             <th>Name / 名称</th>
             <th>Original path / 原始路径</th>
@@ -78,15 +81,15 @@ $stateLabel = [
         </thead>
         <tbody>
         <?php if (!$rows): ?>
-        <tr><td colspan="8" class="empty"><?= $cfg->getHistoryEnabled() ? 'No records / 暂无记录' : 'Recycle bin is empty / 回收站为空' ?></td></tr>
+        <tr><td colspan="7" class="empty"><?= $cfg->getHistoryEnabled() ? 'No records / 暂无记录' : 'Recycle bin is empty / 回收站为空' ?></td></tr>
         <?php else: foreach ($rows as $row): ?>
             <?php
                 $name = basename($row['original_path']);
                 $recycleExists = is_string($row['recycle_path']) && @file_exists($row['recycle_path']);
-                $canAct = $row['state'] === 'active';
+                $managementEnabled = $cfg->isVolumeAllowed((string) $row['volume']);
+                $canAct = $row['state'] === 'active' && $managementEnabled;
             ?>
-            <tr data-id="<?= (int) $row['id'] ?>" data-state="<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>">
-                <td class="col-check"><input type="checkbox" class="recycle-row-check" value="<?= (int) $row['id'] ?>" <?= $canAct ? '' : 'disabled' ?>></td>
+            <tr data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>" data-state="<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>">
                 <td><span class="badge state-<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>"><?= htmlspecialchars($stateLabel[$row['state']] ?? $row['state'], ENT_QUOTES) ?></span></td>
                 <td title="<?= htmlspecialchars($row['recycle_path'], ENT_QUOTES) ?>">
                     <?= htmlspecialchars($name, ENT_QUOTES) ?>
@@ -98,8 +101,10 @@ $stateLabel = [
                 <td><?= htmlspecialchars(date('Y-m-d H:i:s', (int) $row['deleted_at']), ENT_QUOTES) ?></td>
                 <td class="col-actions">
                     <?php if ($canAct && $recycleExists): ?>
-                    <button type="button" class="btn btn-restore" data-id="<?= (int) $row['id'] ?>">Restore / 还原</button>
-                    <button type="button" class="btn btn-purge"  data-id="<?= (int) $row['id'] ?>">Purge / 永久删除</button>
+                    <button type="button" class="btn btn-restore" data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>">Restore / 还原</button>
+                    <button type="button" class="btn btn-purge"  data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>">Purge / 永久删除</button>
+                    <?php elseif (!$managementEnabled && $row['state'] === 'active'): ?>
+                    <span class="hint">management disabled / 管理已关闭</span>
                     <?php elseif (!$recycleExists && $canAct): ?>
                     <span class="hint">missing / 缺失</span>
                     <?php else: ?>
@@ -123,7 +128,6 @@ $stateLabel = [
 .recycle-bin table.settings{ width: 100%; border-collapse: collapse; }
 .recycle-bin table.settings th, .recycle-bin table.settings td{ padding: 6px 10px; border-bottom: 1px solid var(--table-row-line, #333); text-align: left; vertical-align: middle; }
 .recycle-bin table.settings th{ background: var(--table-header-bg, #2a2a2a); }
-.recycle-bin .col-check{ width: 28px; text-align: center; }
 .recycle-bin .col-actions{ white-space: nowrap; }
 .recycle-bin .badge{ padding: 1px 6px; border-radius: 3px; font-size: 11px; }
 .recycle-bin .state-active{ background: #2d6a2d; color: #fff; }
@@ -150,7 +154,14 @@ $stateLabel = [
             cache: 'no-store',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
             body: body.toString()
-        }).then(function (r) { return r.json(); });
+        }).then(function (r) {
+            return r.json().then(function (json) {
+                if (!r.ok || !json || json.ok !== true) {
+                    throw new Error((json && (json.error || json.message)) || ('HTTP ' + r.status));
+                }
+                return json;
+            });
+        });
     }
 
     function refresh() { window.location.reload(); }
@@ -171,15 +182,5 @@ $stateLabel = [
         }
     });
 
-    // Select-all checkbox.
-    var selectAll = document.getElementById('recycle-select-all');
-    if (selectAll) {
-        selectAll.addEventListener('change', function () {
-            var boxes = document.querySelectorAll('.recycle-row-check');
-            for (var i = 0; i < boxes.length; i++) {
-                if (!boxes[i].disabled) boxes[i].checked = selectAll.checked;
-            }
-        });
-    }
 })();
 </script>

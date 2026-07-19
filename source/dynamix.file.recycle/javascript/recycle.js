@@ -9,7 +9,7 @@
  *       MutationObserver as a reconciliation layer.
  *   3.  Button is statically present (data-state machine), never toggled
  *       on/off by async eligibility checks.
- *   4.  Stable DOM identity per itemId (HMAC token from the server).
+ *   4.  Stable DOM identity per itemId (local hash; never trusted by server).
  *   5.  Idempotent ensureActionButton(): safe to call many times.
  *   6.  Fixed-footprint placeholder so column widths never shift.
  *   7.  Event delegation on the table container (survives row re-renders).
@@ -32,7 +32,6 @@
     var STATE_IDLE = 'idle';
     var STATE_CHECKING = 'checking';
     var STATE_RUNNING = 'running';
-    var STATE_BLOCKED = 'blocked';
     var STATE_ERROR = 'error';
     var STATE_DONE = 'done';
 
@@ -40,6 +39,7 @@
     var DFM_WRAPPED = false;
     var observer = null;
     var observeReentry = 0;           // guards against our own DOM writes
+    var initialized = false;
 
     // ---------- i18n ------------------------------------------------------
     function t(key) {
@@ -67,18 +67,12 @@
 
     // ---------- DFM integration ------------------------------------------
     // The DFM table is server-side rendered. The most reliable stable hook
-    // is to wrap `window.doAction` / `window.doActions` so that AFTER DFM
-    // updates the DOM, we decorate before paint. If wrapping fails, we fall
-    // back to a MutationObserver (rule 2.3).
+    // is to wrap loadList()'s Browse.php response and decorate the returned
+    // HTML before DFM appends it. MutationObserver is recovery-only fallback.
     function getTable() {
         // The DFM table can be a real <table> tbody or a generic container;
         // we look for the most common parents in order.
-        return document.querySelector('.file_table tbody')
-            || document.querySelector('#file_table tbody')
-            || document.querySelector('table.filemanager tbody')
-            || document.querySelector('.file_table')
-            || document.querySelector('#file_table')
-            || document.querySelector('[data-file-table]')
+        return document.querySelector('table.indexer')
             || null;
     }
 
@@ -86,33 +80,15 @@
         if (!container) return [];
         // DFM rows typically carry data-path or data-id attributes. We pick
         // any <tr> with a path-like attribute.
-        var rows = container.querySelectorAll(
-            'tr[data-path], tr[data-id], tr[data-href], tr[data-item-id]'
-        );
-        if (rows.length) return rows;
-        // Fallback: any <tr> that has at least one cell and lives under a
-        // table that looks like the file list.
-        return container.querySelectorAll('tbody > tr');
+        return container.querySelectorAll('tbody:not(.tablesorter-infoOnly) > tr');
     }
 
     // Extract the absolute path of a row. We try every known attribute DFM
     // might use, then fall back to the row's first link.
     function rowPath(row) {
         if (!row) return null;
-        var attrs = ['data-path', 'data-id', 'data-href', 'data-item-id', 'data-url'];
-        for (var i = 0; i < attrs.length; i++) {
-            var v = row.getAttribute(attrs[i]);
-            if (v) {
-                // data-href is often URL-encoded; normalise.
-                if (v.indexOf('%2F') !== -1 || v.indexOf('%5C') !== -1) {
-                    try { v = decodeURIComponent(v); } catch (_) {}
-                }
-                return v;
-            }
-        }
-        var link = row.querySelector('a[href]');
-        if (link) return link.getAttribute('href');
-        return null;
+        var action = row.querySelector('i[id^="row_"][data][type]');
+        return action ? action.getAttribute('data') : null;
     }
 
     // Build a stable itemId (opaque token). We use the absolute path hashed
@@ -127,16 +103,6 @@
         return 'r' + hash.toString(36) + '_' + absPath.length.toString(36);
     }
 
-    function pathInScope(absPath) {
-        if (!absPath) return false;
-        var roots = RT.scopeRoots || [];
-        for (var i = 0; i < roots.length; i++) {
-            var r = roots[i];
-            if (absPath === r || absPath.indexOf(r + '/') === 0) return true;
-        }
-        return false;
-    }
-
     // ---------- button creation ------------------------------------------
     function makeButton(id, absPath) {
         var b = document.createElement('button');
@@ -146,11 +112,7 @@
         b.setAttribute('data-recycle-path', absPath);
         b.setAttribute('aria-label', t('btnTitle'));
         b.setAttribute('title', t('btnTitle'));
-        b.setAttribute('data-state', pathInScope(absPath) ? STATE_IDLE : STATE_BLOCKED);
-        if (!pathInScope(absPath)) {
-            b.setAttribute('title', t('btnTitleBlocked'));
-            b.setAttribute('aria-disabled', 'true');
-        }
+        b.setAttribute('data-state', STATE_IDLE);
         var icon = document.createElement('span');
         icon.className = 'recycle-icon';
         icon.setAttribute('aria-hidden', 'true');
@@ -196,11 +158,11 @@
         row.setAttribute('data-recycle-injected', '1');
     }
 
-    function decorateRows() {
+    function decorateRows(container) {
         // Re-entry guard: we run inside MutationObserver; ignore our own writes.
         observeReentry++;
         try {
-            var container = getTable();
+            container = container || getTable();
             var rows = getRows(container);
             for (var i = 0; i < rows.length; i++) {
                 ensureButton(rows[i]);
@@ -216,7 +178,7 @@
     function setState(btn, s, message) {
         if (!btn) return;
         btn.setAttribute('data-state', s);
-        var isInteractive = (s === STATE_IDLE || s === STATE_ERROR || s === STATE_DONE);
+        var isInteractive = (s === STATE_IDLE || s === STATE_ERROR);
         if (isInteractive) {
             btn.removeAttribute('disabled');
         } else {
@@ -226,8 +188,6 @@
             btn.setAttribute('title', t('stateChecking'));
         } else if (s === STATE_RUNNING) {
             btn.setAttribute('title', t('stateRunning'));
-        } else if (s === STATE_BLOCKED) {
-            btn.setAttribute('title', t('btnTitleBlocked'));
         } else if (s === STATE_ERROR) {
             btn.setAttribute('title', t('btnTitleError') + (message ? ': ' + message : ''));
         } else if (s === STATE_IDLE) {
@@ -240,7 +200,7 @@
     // ---------- API client -----------------------------------------------
     // Returns a Promise that resolves with {status, json}. The caller decides
     // what to do with non-ok responses; this keeps the two-step recycle
-    // protocol (need_confirm -> confirm=1) clean.
+    // inspect -> explicit confirmation -> signed recycle sequence clean.
     function apiRequest(payload) {
         var body = new URLSearchParams();
         body.append('action', payload.action);
@@ -270,80 +230,48 @@
         });
     }
 
-    function formatBytes(n) {
-        if (!n || n < 0) return '0 B';
-        var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
-        var i = Math.floor(Math.log(n) / Math.log(1024));
-        if (i >= units.length) i = units.length - 1;
-        var v = n / Math.pow(1024, i);
-        return (i === 0 ? v.toString() : v.toFixed(i === 1 ? 1 : 2)) + ' ' + units[i];
+    function apiError(res) {
+        var json = res && res.json;
+        var code = json && json.code;
+        var errors = RT.i18n && RT.i18n.errors;
+        if (code && errors && errors[code]) return errors[code];
+        return (json && json.error) || ('HTTP ' + ((res && res.status) || 0));
     }
 
     // ---------- click handler (event delegation) -------------------------
-    // Two-step recycle protocol:
-    //   1. POST action=recycle  (no confirm)
-    //        -> 200 ok            : same-fs move done, all good
-    //        -> 202 need_confirm  : cross-fs detected, ask the user
-    //        -> 4xx/5xx           : hard error, surface to user
-    //   2. Only after the user confirms the cross-fs prompt do we re-POST
-    //      with confirm=1, which actually performs the copy+rm.
+    // Two-step protocol: inspect is non-mutating; recycle requires the short-
+    // lived signed inspection token returned for the same inode and metadata.
     function handleClick(btn) {
         var id = btn.getAttribute('data-item-id');
         var path = btn.getAttribute('data-recycle-path') || '';
         if (!id || !path) return;
-        if (btn.getAttribute('data-state') === STATE_BLOCKED) return;
-
-        // First-stage generic confirmation (always asked).
-        try {
-            if (typeof window.confirm === 'function' && !window.confirm(t('confirmRecycle'))) {
-                return;
-            }
-        } catch (_) {}
-
-        // Bump generation so stale responses are ignored across both stages.
+        // Inspect first. Unsupported virtual, cache, remote, removable and USB
+        // paths fail before the user is asked to confirm anything.
         var gen = (generations[id] || 0) + 1;
         generations[id] = gen;
         setState(btn, STATE_CHECKING);
 
-        apiRequest({ action: 'recycle', path: path })
+        apiRequest({ action: 'inspect', path: path })
             .then(function (res) {
                 if (generations[id] !== gen) return; // stale
-
-                // Stage 1 success: same-fs move already done.
-                if (res.status === 200 && res.json && res.json.ok) {
-                    onRecycleDone(btn, gen);
+                if (res.status !== 200 || !res.json || !res.json.ok || !res.json.inspection_token) {
+                    throw new Error(apiError(res));
+                }
+                var confirmed = false;
+                try {
+                    confirmed = typeof window.confirm === 'function'
+                        && window.confirm(t('confirmRecycle') + '\n\n' + res.json.path);
+                } catch (_) { confirmed = false; }
+                if (!confirmed) {
+                    setState(btn, STATE_IDLE);
                     return;
                 }
-
-                // Stage 1 needs cross-fs confirmation.
-                if ((res.status === 202 || (res.json && res.json.need_confirm)) && res.json) {
-                    var info = res.json;
-                    var sizeText = info.is_dir
-                        ? (t('crossFsDirPrompt') + ' (' + formatBytes(info.size) + ')')
-                        : (t('crossFsFilePrompt') + ' (' + formatBytes(info.size) + ')');
-                    var promptMsg =
-                        t('crossFsTitle') + '\n\n' +
-                        info.original_path + '\n\n' +
-                        sizeText + '\n' +
-                        t('crossFsBody') + '\n\n' +
-                        t('crossFsQuestion');
-                    var confirmed = false;
-                    try {
-                        confirmed = typeof window.confirm === 'function' && window.confirm(promptMsg);
-                    } catch (_) { confirmed = false; }
-                    if (!confirmed) {
-                        // User declined: revert to idle, no error.
-                        if (generations[id] === gen) setState(btn, STATE_IDLE);
-                        return;
-                    }
-                    // Stage 2: actually do the cross-fs move.
-                    setState(btn, STATE_RUNNING);
-                    return apiRequest({ action: 'recycle', path: path, confirm: '1' });
-                }
-
-                // Anything else is a hard error.
-                var err = new Error((res.json && res.json.error) || ('HTTP ' + res.status));
-                throw err;
+                setState(btn, STATE_RUNNING);
+                return apiRequest({
+                    action: 'recycle',
+                    path: path,
+                    inspection_token: res.json.inspection_token
+                });
             })
             .then(function (secondRes) {
                 if (!secondRes) return;            // stage 1 already finalised
@@ -351,8 +279,9 @@
                 if (secondRes.json && secondRes.json.ok) {
                     onRecycleDone(btn, gen);
                 } else {
-                    setState(btn, STATE_ERROR, (secondRes.json && secondRes.json.error) || t('errorMessage'));
-                    showToast((secondRes.json && secondRes.json.error) || t('errorMessage'), true);
+                    var message = apiError(secondRes) || t('errorMessage');
+                    setState(btn, STATE_ERROR, message);
+                    showToast(message, true);
                 }
             })
             .catch(function (err) {
@@ -364,16 +293,12 @@
 
     function onRecycleDone(btn, gen) {
         setState(btn, STATE_DONE, t('doneMessage'));
-        var row = btn.closest('tr');
-        if (row && row.style) {
-            row.style.opacity = '0.45';
-        }
         showToast(t('doneMessage'), false);
         setTimeout(function () {
             if (generations[btn.getAttribute('data-item-id')] === gen) {
-                setState(btn, STATE_IDLE);
+                if (typeof window.loadList === 'function') window.loadList();
             }
-        }, 2500);
+        }, 300);
     }
 
     function onClickEvent(event) {
@@ -389,29 +314,43 @@
     }
 
     // ---------- wrap DFM (rule 2.2) --------------------------------------
+    function decorateHtml(html) {
+        if (typeof html !== 'string' || html.indexOf('id="row_') === -1) return html;
+        var table = document.createElement('table');
+        table.innerHTML = html;
+        decorateRows(table);
+        return table.innerHTML;
+    }
+
     function wrapDfmFunctions() {
         if (DFM_WRAPPED) return true;
-        var wrappedSomething = false;
-        var names = ['doAction', 'doActions', 'refreshList', 'renderList'];
-        for (var i = 0; i < names.length; i++) {
-            var n = names[i];
-            if (typeof window[n] !== 'function') continue;
-            (function (name) {
-                var orig = window[name];
-                if (!orig || orig.__recycleWrapped) return;
-                var wrapper = function () {
-                    var rv = orig.apply(this, arguments);
-                    try { decorateRows(); } catch (_) {}
-                    return rv;
-                };
-                wrapper.__recycleWrapped = true;
-                window[name] = wrapper;
-                wrappedSomething = true;
-            }(n));
-        }
-        if (wrappedSomething) {
-            DFM_WRAPPED = true;
-        }
+        var orig = window.loadList;
+        if (typeof orig !== 'function') return false;
+        if (orig.__recycleWrapped) return DFM_WRAPPED = true;
+        var wrapper = function () {
+            var jq = window.jQuery;
+            var originalGet = jq && jq.get;
+            if (typeof originalGet !== 'function') return orig.apply(this, arguments);
+            jq.get = function (url, data, success, dataType) {
+                if (url === '/webGui/include/Browse.php' && typeof success === 'function') {
+                    var originalSuccess = success;
+                    success = function (html) {
+                        var args = Array.prototype.slice.call(arguments);
+                        args[0] = decorateHtml(html);
+                        return originalSuccess.apply(this, args);
+                    };
+                }
+                return originalGet.call(this, url, data, success, dataType);
+            };
+            try {
+                return orig.apply(this, arguments);
+            } finally {
+                jq.get = originalGet;
+            }
+        };
+        wrapper.__recycleWrapped = true;
+        window.loadList = wrapper;
+        DFM_WRAPPED = true;
         return DFM_WRAPPED;
     }
 
@@ -419,7 +358,18 @@
     function startObserver() {
         if (observer) return;
         var container = getTable();
-        if (!container) return;
+        if (!container) {
+            observer = new MutationObserver(function () {
+                if (getTable()) {
+                    observer.disconnect();
+                    observer = null;
+                    startObserver();
+                    decorateRows();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+            return;
+        }
         observer = new MutationObserver(function (mutations) {
             if (observeReentry > 0) return;     // we caused this; ignore
             var external = false;
@@ -445,6 +395,8 @@
     }
 
     function boot() {
+        if (initialized) return;
+        initialized = true;
         // Wait for the table to exist before attaching observer / wrapping.
         function tryBoot(retries) {
             var container = getTable();
@@ -465,18 +417,15 @@
 
         // Event delegation on document (survives any re-render).
         document.addEventListener('click', onClickEvent, true);
-        // Also cover keyboard activation for accessibility.
-        document.addEventListener('keydown', function (event) {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            var btn = event.target && event.target.closest && event.target.closest('.recycle-action[data-item-id]');
-            if (btn) {
-                event.preventDefault();
-                handleClick(btn);
-            }
-        }, true);
     }
 
     if (document.readyState === 'loading') {
+        // readyState becomes "interactive" before DOMContentLoaded callbacks;
+        // DFM functions are defined by then, so loadList is wrapped before its
+        // initial jQuery-ready invocation.
+        document.addEventListener('readystatechange', function () {
+            if (document.readyState === 'interactive') boot();
+        });
         document.addEventListener('DOMContentLoaded', boot);
     } else {
         boot();

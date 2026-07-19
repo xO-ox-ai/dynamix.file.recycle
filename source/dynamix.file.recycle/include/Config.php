@@ -73,12 +73,6 @@ final class Config
         return $this->getInt('history', 'retention_days', 365);
     }
 
-    public function getMaintenanceIntervalHours(): int
-    {
-        $v = $this->getInt('maintenance', 'interval_hours', 1);
-        return max(1, $v);
-    }
-
     public function getAgeDays(): int
     {
         return max(0, $this->getInt('maintenance', 'age_days', 30));
@@ -115,9 +109,35 @@ final class Config
         return $this->getBool('security', 'preserve_metadata', true);
     }
 
-    public function getAllowUserSelfService(): bool
+    /**
+     * Null means the initial "all currently supported volumes" policy.
+     * Once settings are saved, the value is an explicit fail-closed list.
+     *
+     * @return list<string>|null
+     */
+    public function getAllowedVolumes(): ?array
     {
-        return $this->getBool('security', 'allow_user_self_service', false);
+        $raw = $this->getString('volumes', 'allowed', '*');
+        if ($raw === '*') {
+            return null;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $volumes = [];
+        foreach ($decoded as $volume) {
+            if (is_string($volume) && str_starts_with($volume, '/')) {
+                $volumes[$volume] = true;
+            }
+        }
+        return array_keys($volumes);
+    }
+
+    public function isVolumeAllowed(string $volume): bool
+    {
+        $allowed = $this->getAllowedVolumes();
+        return $allowed === null || in_array($volume, $allowed, true);
     }
 
     /**

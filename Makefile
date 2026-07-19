@@ -2,12 +2,12 @@
 #
 # Usage:
 #   make build              # build .txz + patched .plg with PLUGIN_VERSION
-#   make build PLUGIN_VERSION=1.0.0
+#   make build PLUGIN_VERSION=2026.07.19b
 #   make clean
 #   make check              # syntax-check all PHP/JSON/XML files
 #   make lint-php           # php -l on every PHP file
 
-PLUGIN_VERSION ?= 1.0.0
+PLUGIN_VERSION ?= $(shell cat VERSION)
 
 .PHONY: build clean check lint-php
 
@@ -38,8 +38,7 @@ check-bash:
 	@for f in tools/build.sh \
 	          source/dynamix.file.recycle/scripts/install.sh \
 	          source/dynamix.file.recycle/scripts/remove.sh \
-	          source/dynamix.file.recycle/scripts/recycle-maintain \
-	          source/dynamix.file.recycle/cron/dynamix.file.recycle.cron; do \
+	          source/dynamix.file.recycle/scripts/recycle-maintain; do \
 	    bash -n "$$f" && echo "  OK $$f"; \
 	done
 

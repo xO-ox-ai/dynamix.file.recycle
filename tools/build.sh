@@ -1,25 +1,31 @@
 #!/bin/bash
 # tools/build.sh — package the plugin into a versioned .txz and patch the
-# .plg file's <MD5> placeholder with the package hash. Run from a Linux/WSL
-# environment that has tar + xz + md5sum.
+# .plg file's <SHA256> value with the package hash. Run from a Linux/WSL
+# environment that has GNU tar + xz + sha256sum.
 #
 # Usage:
-#   PLUGIN_VERSION=1.0.0 tools/build.sh
+#   PLUGIN_VERSION=2026.07.19b tools/build.sh
 #
 # Output:
-#   build/dynamix.file.recycle-1.0.0.txz     (the package)
-#   build/dynamix.file.recycle.plg           (the .plg with MD5 patched)
+#   build/dynamix.file.recycle-YYYY.MM.DDx-x86_64-1.txz
+#   build/dynamix.file.recycle.plg
 set -euo pipefail
 
-VERSION="${PLUGIN_VERSION:-1.0.0}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+VERSION="${PLUGIN_VERSION:-$(tr -d '[:space:]' < "$ROOT/VERSION")}"
+
+if [[ ! "$VERSION" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}[a-z]$ ]]; then
+    echo "Invalid release version: $VERSION" >&2
+    exit 1
+fi
 
 BUILD_DIR="$ROOT/build"
 PKG_NAME="dynamix.file.recycle"
 SRC="$ROOT/source/$PKG_NAME"
-STAGE="$BUILD_DIR/stage/$PKG_NAME"
-OUT_TXZ="$BUILD_DIR/$PKG_NAME-$VERSION.txz"
+STAGE_ROOT="$BUILD_DIR/stage"
+STAGE="$STAGE_ROOT/usr/local/emhttp/plugins/$PKG_NAME"
+OUT_TXZ="$BUILD_DIR/$PKG_NAME-$VERSION-x86_64-1.txz"
 OUT_PLG="$BUILD_DIR/$PKG_NAME.plg"
 
 if [[ ! -d "$SRC" ]]; then
@@ -35,6 +41,7 @@ echo "==> Staging plugin files"
 # Copy the plugin directory as it should appear on the device under
 # /usr/local/emhttp/plugins/dynamix.file.recycle/.
 cp -a "$SRC/." "$STAGE/"
+cp -f "$ROOT/VERSION" "$STAGE/VERSION"
 
 # Make scripts executable.
 chmod 0755 "$STAGE"/scripts/*.sh "$STAGE"/scripts/recycle-maintain 2>/dev/null || true
@@ -42,24 +49,42 @@ chmod 0755 "$STAGE"/cron/dynamix.file.recycle.cron 2>/dev/null || true
 
 # Drop any developer-only files from staging.
 rm -f "$STAGE/images/README.md" 2>/dev/null || true
+rm -rf "$STAGE/cron"
+
+# Minimal Slackware package metadata so upgradepkg/removepkg can track the
+# installed version cleanly.
+mkdir -p "$STAGE_ROOT/install"
+cat > "$STAGE_ROOT/install/slack-desc" <<EOF
+dynamix.file.recycle: Dynamix File Recycle Bin
+dynamix.file.recycle:
+dynamix.file.recycle: Conservative per-volume recycle support for Unraid DFM.
+dynamix.file.recycle:
+dynamix.file.recycle: Version $VERSION
+EOF
 
 echo "==> Creating $OUT_TXZ"
-# Tarball paths must be relative so they extract to
-# /usr/local/emhttp/plugins/dynamix.file.recycle/ when unpacked from /.
-# We pack from build/stage so the leading path is dynamix.file.recycle/.
-( cd "$BUILD_DIR/stage" && tar -cJf "$OUT_TXZ" "$PKG_NAME" )
+# Include the complete filesystem path and normalize metadata so identical
+# sources produce identical packages.
+( cd "$STAGE_ROOT" && tar \
+    --sort=name \
+    --mtime='UTC 1970-01-01' \
+    --owner=0 --group=0 --numeric-owner \
+    -cJf "$OUT_TXZ" install usr )
 
-echo "==> Computing MD5"
-MD5="$(md5sum "$OUT_TXZ" | awk '{print $1}')"
-echo "    MD5 = $MD5"
+echo "==> Computing SHA256"
+SHA256="$(sha256sum "$OUT_TXZ" | awk '{print $1}')"
+echo "    SHA256 = $SHA256"
 
 echo "==> Patching .plg"
-# Substitute the version and MD5 placeholders. We write the patched copy to
+# Substitute the version and SHA256 value. We write the patched copy to
 # build/ AND overwrite the in-repo .plg so what gets committed matches the
 # published release exactly.
 sed \
     -e "s|<!ENTITY version   \"[^\"]*\">|<!ENTITY version   \"$VERSION\">|g" \
-    -e "s|<MD5>[^<]*</MD5>|<MD5>$MD5</MD5>|g" \
+    -e "s|<SHA256>[^<]*</SHA256>|<SHA256>$SHA256</SHA256>|g" \
+    -e "s|EXPECTED_SHA256=\"[0-9a-f]*\"|EXPECTED_SHA256=\"$SHA256\"|g" \
+    -e "s|dynamix\.file\.recycle-[0-9]\{4\}\.[0-9]\{2\}\.[0-9]\{2\}[a-z]-x86_64-1\.txz|dynamix.file.recycle-$VERSION-x86_64-1.txz|g" \
+    -e "s|dynamix\.file\.recycle-[0-9]\{4\}\.[0-9]\{2\}\.[0-9]\{2\}[a-z]-x86_64-1\"|dynamix.file.recycle-$VERSION-x86_64-1\"|g" \
     "$ROOT/$PKG_NAME.plg" > "$OUT_PLG"
 cp -f "$OUT_PLG" "$ROOT/$PKG_NAME.plg"
 

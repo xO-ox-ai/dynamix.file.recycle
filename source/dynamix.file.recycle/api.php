@@ -9,12 +9,11 @@
  *   plugin therefore does NOT re-implement CSRF: the front-end just needs to
  *   include `csrf_token` in the POST body, and Unraid handles the rest.
  *
- * Authorisation: every action requires an authenticated admin session (or
- * the experimental `allow_user_self_service` mode for some read-only /
- * own-item actions).
+ * Authorisation: every action requires an authenticated admin session.
  *
  * Actions (POST body, application/x-www-form-urlencoded):
- *   action=recycle&path=<abs>                  move an item to the bin
+ *   action=inspect&path=<abs>                  validate and sign current item state
+ *   action=recycle&path=<abs>&inspection_token move an inspected item to the bin
  *   action=restore&id=<itemId>                 restore from the bin
  *   action=purge&id=<itemId>                   permanently delete
  *   action=empty&volume=<absVolumeRoot>        empty a volume's bin
@@ -55,57 +54,84 @@ function fail(string $message, int $http = 400, ?string $code = null): void
     respond($payload, $http);
 }
 
+function publicErrorCode(\Throwable $e): string
+{
+    $message = $e->getMessage();
+    return match (true) {
+        str_contains($message, 'boot device') => 'unsupported_boot_device',
+        str_contains($message, 'user-share paths') => 'unsupported_user_share',
+        str_contains($message, 'Cache and pool paths') => 'unsupported_cache_pool',
+        str_contains($message, 'Unassigned Devices') => 'unsupported_unassigned_device',
+        str_contains($message, 'Remote filesystem') => 'unsupported_remote_path',
+        str_contains($message, 'USB-backed') => 'unsupported_usb_storage',
+        str_contains($message, 'Removable storage') => 'unsupported_removable_storage',
+        str_contains($message, 'backing block-device'),
+        str_contains($message, 'backing devices'),
+        str_contains($message, 'physical backing disk'),
+        str_contains($message, 'verifiable local block device'),
+        str_contains($message, 'ZFS pool identity') => 'unverified_storage_topology',
+        str_contains($message, 'mount point') => 'unsupported_nested_mount',
+        str_contains($message, 'Symbolic') => 'unsupported_symbolic_link',
+        str_contains($message, 'filesystem boundary') => 'unsupported_cross_filesystem',
+        str_contains($message, 'management is disabled') => 'volume_management_disabled',
+        str_contains($message, 'selected disk or dataset') => 'invalid_volume_selection',
+        str_contains($message, 'out of scope') => 'unsupported_path',
+        default => 'operation_failed',
+    };
+}
+
 try {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        fail('POST is required.', 405, 'method_not_allowed');
+    }
+    $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($contentLength < 0 || $contentLength > 32768) {
+        fail('Request body is too large.', 413, 'request_too_large');
+    }
     $c = boot();
     $cfg = $c->config();
     $sec = $c->security();
     $logger = $c->logger();
-    $action = trim($_POST['action'] ?? $_GET['action'] ?? '');
-
-    // Read-only / unauthenticated-ish actions are gated inside their handlers.
-    // All other actions require admin.
-    $publicActions = ['status', 'list'];
-    if (!in_array($action, $publicActions, true)) {
-        $sec->assertAdmin();
+    $action = trim((string) ($_POST['action'] ?? ''));
+    if (preg_match('/\A(?:inspect|recycle|restore|purge|empty|list|status|config_get|config_save|maintain_now)\z/', $action) !== 1) {
+        fail('Unknown action.', 400, 'unknown_action');
     }
+    $sec->assertAdmin();
 
     // For all mutating actions we require the plugin to be enabled.
-    $mutatingActions = ['recycle', 'restore', 'purge', 'empty', 'config_save', 'maintain_now'];
+    $mutatingActions = ['inspect', 'recycle', 'restore', 'purge', 'empty', 'maintain_now'];
     if (in_array($action, $mutatingActions, true)) {
         $sec->assertEnabled($cfg);
     }
 
     switch ($action) {
+        case 'inspect': {
+            $path = (string) ($_POST['path'] ?? '');
+            respond($c->recycler()->inspect($path));
+        }
+
         case 'recycle': {
             $path = (string) ($_POST['path'] ?? '');
-            $confirm = isset($_POST['confirm']) && in_array(strtolower((string) $_POST['confirm']), ['1', 'true', 'yes', 'on'], true);
-            $canonical = $sec->assertPathInScope($path);
-            $r = $c->recycler()->recycle($canonical, $confirm);
-            if ($r->needConfirm) {
-                // 202 Accepted: precheck succeeded, waiting for the user to
-                // confirm before we actually move anything.
-                respond($r->toArray(), 202);
-            }
+            $inspectionToken = (string) ($_POST['inspection_token'] ?? '');
+            $r = $c->recycler()->recycle($path, $inspectionToken);
             if (!$r->ok) {
-                fail($r->error ?? 'Unknown error', 400, 'recycle_failed');
+                fail($r->error ?? 'Unknown error', 409, 'recycle_failed');
             }
             respond(['ok' => true] + $r->toArray());
         }
 
         case 'restore': {
-            $id = (int) ($_POST['id'] ?? 0);
-            if ($id <= 0) {
-                fail('Missing id.', 400);
-            }
-            respond($c->restorer()->restore($id));
+            $id = (string) ($_POST['id'] ?? '');
+            if (!\DynamixFileRecycle\History::validId($id)) fail('Invalid item id.', 400);
+            $result = $c->restorer()->restore($id);
+            respond($result, ($result['ok'] ?? false) ? 200 : 409);
         }
 
         case 'purge': {
-            $id = (int) ($_POST['id'] ?? 0);
-            if ($id <= 0) {
-                fail('Missing id.', 400);
-            }
-            respond($c->purger()->purgeOne($id, 'manual'));
+            $id = (string) ($_POST['id'] ?? '');
+            if (!\DynamixFileRecycle\History::validId($id)) fail('Invalid item id.', 400);
+            $result = $c->purger()->purgeOne($id, 'manual');
+            respond($result, ($result['ok'] ?? false) ? 200 : 409);
         }
 
         case 'empty': {
@@ -114,44 +140,28 @@ try {
             if ($volCanon === null || !is_dir($volCanon)) {
                 fail('Invalid volume.', 400);
             }
-            // Only allow emptying actual /mnt/disk* roots or ZFS mounts.
-            if (!$c->fs()->isInScope($volCanon)) {
-                fail('Volume is out of scope.', 400);
+            if (!$c->fs()->isApprovedVolumeRoot($volCanon)) {
+                fail('Only an exact supported disk or ZFS dataset root can be emptied.', 409);
+            }
+            if (!$cfg->isVolumeAllowed($volCanon)) {
+                fail('Recycle management is disabled for this disk or ZFS dataset. Enable it in the plugin settings and try again.', 409, 'volume_management_disabled');
             }
             respond($c->purger()->emptyVolume($volCanon));
         }
 
         case 'list': {
-            // Admin sees everything; non-admin sees only their own (if allowed).
-            $allowSelf = $cfg->getAllowUserSelfService();
-            try {
-                $sec->assertAdmin();
-                $isAdmin = true;
-            } catch (\Throwable $_) {
-                if (!$allowSelf) {
-                    fail('Administrator privileges required.', 403);
-                }
-                $isAdmin = false;
-            }
-            $state = $_GET['state'] ?? ($_POST['state'] ?? 'active');
-            $volume = $_GET['volume'] ?? ($_POST['volume'] ?? null);
-            $includeHistory = $isAdmin
-                && $cfg->getHistoryEnabled()
-                && ($state === 'all');
-            $limit = max(1, min(2000, (int) ($_GET['limit'] ?? 500)));
-            $offset = max(0, (int) ($_GET['offset'] ?? 0));
+            $state = (string) ($_POST['state'] ?? 'active');
+            $volume = isset($_POST['volume']) && $_POST['volume'] !== '' ? (string) $_POST['volume'] : null;
+            if (!in_array($state, ['active', 'all'], true)) fail('Invalid state filter.', 400);
+            if ($volume !== null && !$c->fs()->isApprovedVolumeRoot($volume)) fail('Invalid volume filter.', 400);
+            $includeHistory = $cfg->getHistoryEnabled() && $state === 'all';
+            $limit = max(1, min(2000, (int) ($_POST['limit'] ?? 500)));
+            $offset = max(0, (int) ($_POST['offset'] ?? 0));
 
             if ($includeHistory) {
                 $rows = $c->history()->listAll($volume, $limit, $offset);
             } else {
                 $rows = $c->history()->listActive($volume, $limit, $offset);
-            }
-            // Never leak absolute paths to non-admin viewers.
-            if (!$isAdmin) {
-                foreach ($rows as &$row) {
-                    $row['original_path'] = basename($row['original_path']);
-                    $row['recycle_path'] = basename($row['recycle_path']);
-                }
             }
             respond([
                 'ok' => true,
@@ -163,8 +173,9 @@ try {
 
         case 'status': {
             $stats = [];
-            foreach (glob('/mnt/disk*', GLOB_ONLYDIR) as $d) {
+            foreach ($c->fs()->supportedVolumes() as $d) {
                 $rec = $d . '/' . FsInspector::RECYCLE_NAME;
+                if (!is_dir($rec)) continue;
                 $stats[] = [
                     'volume' => $d,
                     'fs' => $c->fs()->resolveVolume($d)['fs'] ?? 'unknown',
@@ -173,6 +184,7 @@ try {
                     'size' => is_dir($rec) ? $c->fs()->dirSize($rec) : 0,
                     'total' => $c->fs()->volumeStats($d)['total'],
                     'used' => $c->fs()->volumeStats($d)['used'],
+                    'management_enabled' => $cfg->isVolumeAllowed($d),
                 ];
             }
             respond([
@@ -199,10 +211,9 @@ try {
         }
 
         case 'config_save': {
-            // Three accepted payload shapes:
+            // Two accepted payload shapes:
             //   1. config=<json>                 (JSON string in the 'config' field)
             //   2. config[global][enabled]=1     (PHP-style nested array)
-            //   3. flat fields                   (enabled=1&language=en_US&...)
             $payload = $_POST['config'] ?? null;
             if (is_string($payload)) {
                 $decoded = json_decode($payload, true);
@@ -213,19 +224,18 @@ try {
             } elseif (is_array($payload)) {
                 // PHP nested array from config[...]=...; use as-is.
             } elseif ($payload === null) {
-                // Flat fallback: rebuild section/keys from $_POST top-level keys.
-                $payload = $_POST;
-                unset($payload['csrf_token'], $payload['action']);
+                fail('A nested or JSON config payload is required.', 400, 'invalid_config');
             } else {
                 fail('No config payload supplied.', 400);
             }
             $patch = $c->security()->sanitizeConfigPatch($payload);
             $cfg->mergeAndSave($patch);
+            $c->scheduler()->sync();
             respond(['ok' => true]);
         }
 
         case 'maintain_now': {
-            $report = $c->maintenance()->run();
+            $report = $c->maintenance()->run(true);
             $logger->info('maintain_now', '', 'manual run: ' . json_encode($report));
             respond(['ok' => true, 'report' => $report]);
         }
@@ -239,5 +249,5 @@ try {
     if (isset($logger)) {
         try { $logger->error('api', '', $e->getMessage() . "\n" . $e->getTraceAsString()); } catch (\Throwable $_) {}
     }
-    fail($e->getMessage(), $http);
+    fail($e->getMessage(), $http, publicErrorCode($e));
 }

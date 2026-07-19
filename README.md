@@ -1,143 +1,145 @@
 # Dynamix File Recycle Bin
 
-> 🇨🇳 中文版请见 [README.zh.md](README.zh.md)
+> Chinese documentation: [README.zh.md](README.zh.md)
 
-A safe **recycle bin for the Unraid Dynamix File Manager**. Instead of deleting
-files permanently, this plugin adds a dedicated **"Move to Recycle Bin"**
-button next to each row in the official file browser and moves the selected
-files/folders into a per-volume `.RecycleBin` directory, where they can be
-browsed, restored, or purged on a schedule.
+A guarded recycle bin for the Unraid Dynamix File Manager (DFM). It adds a
+fixed **Move to Recycle Bin** button to DFM rows and atomically renames the
+selected file or directory into the owning volume's `.RecycleBin`.
 
-- ✅ Injects a button into the **Dynamix File Manager** Browse page **without
-  modifying any Unraid core file** (uses the official `Menu='Buttons'`
-  injection channel).
-- ✅ One recycle bin per volume. v1 supports `/mnt/disk*` data drives and
-  individual ZFS datasets. (`/mnt/user`, `/mnt/cache*` are intentionally out
-  of scope for v1.)
-- ✅ Configurable maintenance: age-based eviction, capacity threshold eviction
-  (LRU), optional scheduled auto-empty, log level and log retention.
-- ✅ Bilingual UI and docs (English + 中文), following the Unraid system
-  language.
-- ✅ Compliant with Unraid 7.x CSRF requirements (relies on Unraid's
-  `auto_prepend` verification; the plugin never re-implements CSRF).
+The current release deliberately supports only simple, verifiable storage
+layouts. The button stays visible for every DFM row; the server performs the
+authoritative check after it is clicked and shows a specific reason and advice
+when the path is unsupported.
+
+## Supported scope
+
+- Ordinary files and directories on Unraid array mounts such as `/mnt/disk1`.
+- Local ZFS datasets whose backing devices can be verified as non-USB and
+  non-removable. Each dataset gets its own `.RecycleBin` and SQLite database.
+- Atomic, same-filesystem rename only.
+
+The following are intentionally rejected:
+
+- `/mnt/user` and `/mnt/user0` virtual user-share paths.
+- `/mnt/cache*` and other cache/pool paths.
+- `/mnt/disks` (Unassigned Devices), `/mnt/remotes`, remote filesystems and
+  arbitrary external mounts.
+- `/boot`, including the Unraid boot USB device.
+- USB-backed or removable storage, symbolic links, nested mount points and
+  any storage topology that cannot be verified safely.
+- Cross-filesystem copy-and-delete operations.
+
+Linux cannot always identify the physical enclosure of a disk. For example,
+an eSATA enclosure may present exactly like an internal SATA disk. The plugin
+therefore uses mount ownership, transport, removable flags and sysfs topology;
+unknown layouts are blocked, but physical placement cannot be guaranteed from
+software alone.
 
 ## Requirements
 
-| Component | Version |
+| Component | Requirement |
 |---|---|
 | Unraid OS | 7.3.2 or newer |
-| PHP | 8.x (bundled with Unraid) |
-| Dynamix File Manager | present (ships with Unraid 7.3+) |
-| Optional | `zfs` tools, when ZFS datasets are used |
+| Dynamix File Manager | Installed |
+| PHP | Unraid-bundled PHP 8.x with PDO SQLite |
+| ZFS support | Unraid `zfs`, `zpool` and `lsblk` tools |
 
-## Installation
+## Install
 
-Pick **one** of the methods below. The plugin URL is the same in both cases:
+### Unraid Community Applications
 
+After the plugin is accepted into Community Applications, open **Apps** and
+search for `Dynamix File Recycle Bin`.
+
+### Unraid Plugin Manager
+
+Open **Plugins -> Install Plugin** and paste:
+
+```text
+https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg
 ```
-https://github.com/xO-ox-ai/dynamix.file.recycle/releases/download/v2026.07.19a/dynamix.file.recycle.plg
-```
 
-> Always copy the URL for the **specific release** you want from the
-> [Releases page](https://github.com/xO-ox-ai/dynamix.file.recycle/releases).
-> The URL above points to the latest published release.
+The Plugin Manager downloads the versioned package, verifies its SHA-256
+digest and runs the install hook. Open **Settings -> Dynamix File Recycle Bin**
+after installation to review the master switch and maintenance policy.
 
-### Method A — via the Unraid web UI (recommended)
-
-1. Open **Plugins → Install Plugin**.
-2. Paste the `.plg` URL from the Releases page into the input box.
-3. Click **Install**. The plugin manager downloads the `.txz` package,
-   verifies the MD5, extracts it, and runs the install hook (registers the
-   cron job, initialises SQLite, copies the default config).
-4. After install completes, **Tools → Recycle Bin** becomes available and a
-   new entry appears in **Plugins** for future updates.
-5. Open **Settings → Dynamix File Recycle Bin** to enable the feature and tune
-   the maintenance policy.
-
-### Method B — via the Unraid command line
-
-Useful for headless servers or scripted installs.
+Command-line installation uses the same official Plugin Manager path:
 
 ```bash
-# 1. Download the .plg descriptor onto the server.
-wget -O /tmp/dynamix.file.recycle.plg \
-  https://github.com/xO-ox-ai/dynamix.file.recycle/releases/download/v2026.07.19a/dynamix.file.recycle.plg
-
-# 2. Feed it to the plugin manager. This performs the same install flow
-#    as the web UI (download .txz -> verify MD5 -> extract -> hook).
-/usr/local/emhttp/plugins/dynamix/scripts/plugin install /tmp/dynamix.file.recycle.plg
+/usr/local/emhttp/plugins/dynamix.plugin.manager/scripts/plugin install \
+  https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg
 ```
 
-> If your Unraid build does not expose `plugin install` at that path, use the
-> web-UI method — the resulting installation is identical.
+## Basic usage
 
-## Uninstallation
+1. Open a physical disk or supported ZFS dataset in DFM.
+2. Click the recycle icon beside a file or directory.
+3. The server checks the current path, mount, filesystem and backing device.
+4. Confirm only after the check succeeds.
+5. Open **Tools -> Recycle Bin** to restore or permanently purge tracked items.
 
-The plugin preserves your data by default: per-volume `.RecycleBin/`
-directories and your settings under
-`/boot/config/plugins/dynamix.file.recycle/` are **kept** so you can re-install
-later without losing anything.
+The Settings page lists every volume that currently passes the backend safety
+checks. All are selected on first install. Saving converts that initial policy
+to an explicit allowlist: unchecked volumes remain visible in history, but new
+recycle, restore, purge and automatic maintenance actions are blocked there.
 
-### Method A — via the Unraid web UI (recommended)
+Example layout:
 
-1. Open **Plugins**, find **Dynamix File Recycle Bin** in the list.
-2. Click the **gear icon → Remove Plugin** (or **Uninstall**).
-3. Confirm. The removal hook de-registers the cron job and deletes the plugin
-   code + transient state (SQLite/logs).
-4. *(Optional)* To completely wipe the data and settings, run the manual
-   cleanup commands below.
+| Original path | Recycled path | Database |
+|---|---|---|
+| `/mnt/disk1/Movies/x.mkv` | `/mnt/disk1/.RecycleBin/Movies/x.mkv.__recycle_UUID` | `/mnt/disk1/.RecycleBin/.dynamix-file-recycle.sqlite` |
+| `/mnt/tank/photos/a.jpg` | `/mnt/tank/.RecycleBin/photos/a.jpg.__recycle_UUID` | `/mnt/tank/.RecycleBin/.dynamix-file-recycle.sqlite` |
 
-### Method B — via the Unraid command line
+For ZFS, `/mnt/tank` in the example must be the dataset's actual mount point;
+pool aliases and parent filesystems are not substituted.
+
+## Persistence and diagnostics
+
+- Recycled data and history: `<volume>/.RecycleBin/` and its SQLite database.
+- Persistent settings: `/boot/config/plugins/dynamix.file.recycle/`.
+- Runtime log: `/usr/local/emhttp/state/plugins/dynamix.file.recycle/logs/dynamix.file.recycle.log`.
+- Reboot-surviving error audit:
+  `/boot/config/plugins/dynamix.file.recycle/logs/audit.log`.
+
+The runtime log is stored in RAM and is lost on reboot. Errors are also copied
+to the bounded persistent audit log, while operation records live in each
+volume's SQLite database.
+
+No independent hourly or daily maintenance task is installed. Entering a
+scheduled-cleanup cron expression in Settings creates the plugin's only
+automatic task through Unraid's `update_cron`; leaving it empty creates no cron
+entry. At the selected time the enabled bins are emptied and database/history
+maintenance runs in the same job.
+
+## Uninstall
+
+Open **Plugins**, select **Dynamix File Recycle Bin**, and click **Remove**.
+From a terminal, the equivalent Plugin Manager command is:
 
 ```bash
-# 1. Run the plugin's own removal hook (the same path the plugin manager uses).
-PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
-if [ -x "$PLUGIN_DIR/scripts/remove.sh" ]; then
-    "$PLUGIN_DIR/scripts/remove.sh"
-else
-    echo "Plugin directory not found — nothing to remove via hook."
-fi
-
-# 2. (Optional) wipe preserved data: all per-volume .RecycleBin/ directories.
-#    Inspect first, then delete once you are sure:
-find /mnt -maxdepth 4 -type d -name .RecycleBin -print
-#    rm -rf $(find /mnt -maxdepth 4 -type d -name .RecycleBin)
-
-# 3. (Optional) wipe preserved settings under /boot (survives reboot).
-rm -rf /boot/config/plugins/dynamix.file.recycle
+/usr/local/emhttp/plugins/dynamix.plugin.manager/scripts/plugin remove \
+  dynamix.file.recycle.plg
 ```
 
-## Usage
-
-- Open **Main → Browse** (the Dynamix File Manager). Each row now has an extra
-  icon button that moves the item to the recycle bin for that volume.
-- Open **Tools → Recycle Bin** to browse, restore, or permanently purge items.
-- Open **Settings → Dynamix File Recycle Bin** to switch the feature on/off,
-  configure maintenance, log level, history recording, and language.
-
-## Where does the recycle bin live?
-
-| Source | Recycle bin location |
-|---|---|
-| `/mnt/disk1/Movies/x.mkv` | `/mnt/disk1/.RecycleBin/Movies/x.mkv` |
-| `/mnt/tank/photos/2025/a.jpg` (ZFS) | `/mnt/tank/.RecycleBin/photos/2025/a.jpg` |
-
-Original owner/group/mode are preserved so the file can be restored exactly.
+Uninstall removes plugin code, scheduled tasks and volatile logs. It preserves
+settings, the persistent audit log, and every `.RecycleBin` directory with its
+SQLite database. Inspect those directories manually before deleting them if a
+complete data wipe is required.
 
 ## Security
 
-- All write operations require an authenticated **admin** session.
-- All paths are normalised and confined to their original volume; `..`
-  traversal is rejected.
-- Cross-filesystem moves fall back to `cp -a` + `rm` to guarantee correctness
-  (the original is removed only after the copy succeeds).
+- Every API action requires an authenticated Unraid administrator session.
+- Every request is POST-only and uses Unraid's native CSRF validation.
+- A short-lived signed inspection token binds confirmation to the same path,
+  inode and metadata that the server checked immediately before the move.
+- Symlink aliases, path traversal, volume roots and nested mounts are rejected.
+- Recycle, restore and purge transitions are recorded before and after the
+  filesystem operation so interrupted operations can be recovered.
 
-## Documentation
+## Support
 
-- [中文说明](README.zh.md)
-- [Design document](docs/DESIGN.md)
-- [Changelog](CHANGELOG.md)
+[GitHub Issues](https://github.com/xO-ox-ai/dynamix.file.recycle/issues)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

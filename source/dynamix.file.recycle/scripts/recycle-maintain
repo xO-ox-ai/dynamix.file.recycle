@@ -1,5 +1,5 @@
 #!/bin/bash
-# scripts/recycle-maintain — invoked by /etc/cron.hourly/dynamix.file.recycle.
+# scripts/recycle-maintain — invoked only by the user's generated cron entry.
 #
 # Thin wrapper that hands off to the PHP Bootstrap CLI. Keeps the cron entry
 # minimal and avoids re-implementing maintenance logic in bash.
@@ -22,5 +22,5 @@ if [ ! -f "$BOOT" ]; then
     exit 0
 fi
 
-# Run maintenance. Bootstrap prints a short summary line; we let it through.
-exec "$PHP_BIN" "$BOOT" maintain
+[[ "${1:-}" == "scheduled" ]] || { echo "scheduled invocation required" >&2; exit 2; }
+exec "$PHP_BIN" "$BOOT" maintain-scheduled

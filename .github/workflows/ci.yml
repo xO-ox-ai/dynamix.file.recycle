@@ -1,0 +1,32 @@
+name: Validate plugin
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PHP syntax
+        run: find source/dynamix.file.recycle -type f \( -name '*.php' -o -name '*.page' \) -print0 | xargs -0 -n1 php -l
+      - name: Contract and unit tests
+        run: |
+          php tests/contract.test.php
+          php tests/localization.test.php
+          php tests/safety.test.php
+      - name: Script syntax
+        run: |
+          bash -n tools/build.sh source/dynamix.file.recycle/scripts/*.sh source/dynamix.file.recycle/scripts/recycle-maintain
+          node --check source/dynamix.file.recycle/javascript/recycle.js
+      - name: Build package
+        run: PLUGIN_VERSION="$(tr -d '[:space:]' < VERSION)" tools/build.sh
+      - name: Verify package root
+        run: |
+          package="build/dynamix.file.recycle-$(tr -d '[:space:]' < VERSION)-x86_64-1.txz"
+          tar -tf "$package" | grep -Fx 'usr/local/emhttp/plugins/dynamix.file.recycle/api.php'
+          tar -tf "$package" | grep -Fx 'usr/local/emhttp/plugins/dynamix.file.recycle/VERSION'

@@ -104,11 +104,6 @@
     to { transform: rotate(360deg); }
 }
 
-.recycle-action[data-state="blocked"] {
-    opacity: .35;
-    cursor: not-allowed;
-}
-
 .recycle-action[data-state="error"] {
     color: #ff6b6b;
 }

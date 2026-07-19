@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
+## [Unreleased]
+
+_Nothing yet._
+
+## [2026.07.19b] - 2026-07-19
+
+### Changed
+- Corrected the Slackware package root and explicit Plugin Manager
+  install/remove lifecycle.
+- Switched the update URL to the stable raw-main PLG and package verification
+  from MD5 to SHA-256.
+- Reworked DFM 7.3.2 integration to decorate official `table.indexer` rows
+  before render, keeping a fixed button present through all async states.
+- Restricted the release to verified internal array paths and local ZFS
+  datasets. User shares, cache/pools, UD/external mounts, remote paths, the
+  boot USB, USB/removable media, unknown topology and cross-filesystem moves
+  now fail before confirmation with localized reason and advice.
+- Added a validated per-disk/per-dataset management allowlist in Settings.
+- Replaced the volatile central database with one SQLite shard inside every
+  supported volume or dataset's `.RecycleBin`.
+
+### Security
+- Made every API action administrator-only, POST-only and action-whitelisted.
+- Added a signed two-step inspection token bound to path, inode and metadata.
+- Added operation locking, transitional database states, interruption
+  recovery, non-overwriting restore, and tombstone-based purge.
+- Added bounded persistent error audit logging on the Unraid boot device.
+
+### Added
+- Community Applications profile/wrapper metadata and a security policy.
+- Source, localization, package-layout and checksum contract checks.
+
 ## [2026.07.19a] — 2026-07-19
 
 First public release.
@@ -48,8 +80,3 @@ First public release.
 - Operations on the recycle bin itself (or any path inside it) are rejected.
 - Front-end item tokens are HMAC-signed to prevent path forgery; the server
   always re-validates on every call.
-
-## [Unreleased]
-
-_Nothing yet._
-

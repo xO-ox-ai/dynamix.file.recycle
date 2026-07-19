@@ -1,223 +1,158 @@
-# Design document — Dynamix File Recycle Bin
+# Design: Dynamix File Recycle Bin
 
-> This document captures the architecture decisions, the verified Unraid
-> mechanisms, and how the implementation maps to the 10-rule front-end guide.
-> Bilingual section headings are inline; the prose is English-first.
+This document describes the `2026.07.19b` architecture and its conservative
+storage boundary.
 
-## 1. Goals
+## 1. Safety model
 
-| Goal | Implementation |
-|---|---|
-| Add a "Move to Recycle Bin" button to DFM Browse | `RecycleInject.page` (`Menu='Buttons:5'`) + `javascript/recycle.js` |
-| One recycle bin per volume; v1 = `/mnt/disk*` + ZFS datasets | `FsInspector::resolveVolume` / `recycleRoot` |
-| Configurable maintenance (age / capacity / log level / log retention / auto-empty) | `Maintenance.php`, `Config.php`, `settings.page` |
-| Tools → Recycle Bin browser, with history field for state | `RecycleBin.page`, SQLite `items.state` |
-| Compliant with CA + Unraid CSRF | `.plg` + `plugins.json`; CSRF delegated to `auto_prepend` |
-| No modification to any Unraid core file | All injection rides the official `Buttons` page channel |
+The visible button is not proof that a path is supported. It is a stable DFM
+command slot. The backend makes the authoritative decision when the user
+clicks it.
 
-## 2. Verified Unraid mechanisms
+An item is accepted only when all of these checks pass:
 
-These were verified against the Unraid `webgui` source tree.
+1. The path is absolute, canonical, exists, and is not a symlink or alias.
+2. It belongs to `/mnt/diskN` or a discovered local ZFS dataset.
+3. It is outside `/mnt/user*`, `/mnt/cache*`, `/mnt/disks`, `/mnt/remotes`,
+   `/boot`, and other system-managed roots.
+4. Every backing block device can be inspected and is neither USB nor marked
+   removable. Unknown topology is rejected.
+5. The item is an ordinary file or directory, not a volume root, recycle-bin
+   item, special node, or directory containing a nested mount.
+6. Source and destination are on the same filesystem.
+7. The owning disk or dataset is enabled in the saved per-volume allowlist.
 
-### 2.1 The `Buttons` page injection channel
+This release never falls back to recursive copy-and-delete. A failed check is
+non-mutating and returns a stable error code so the browser can show localized
+reason and recovery advice.
 
-`emhttp/plugins/dynamix/include/DefaultPageLayout.php` iterates over
-`find_pages('Buttons')` inside `<head>` and `include`s each matched `.page`
-file's body. This is exactly the channel DFM itself uses
-(`BrowseButton.page`, `Menu='Buttons:3a'`).
+## 2. Front-end integration
 
-By placing our `RecycleInject.page` at `Menu='Buttons:5'`, we ensure:
+`RecycleInject.page` uses Unraid's `Menu='Buttons:5'` page channel. It does not
+patch `Browse.page`, `HeadInlineJS.php`, or another plugin.
 
-1. Our `<link>`/`<script>` is included on **every** page (cheap, ~1 KB).
-2. On the Browse page specifically, we rank AFTER DFM, so `window.doAction`
-   is already defined when our JS wraps it.
-3. We do **not** modify any dynamix file — only ship our own `.page`.
+DFM loads rows from `/webGui/include/Browse.php` through `loadList()`. The
+plugin wraps that function and temporarily intercepts the matching jQuery GET
+callback. It decorates the returned HTML before DFM inserts it into the live
+table. A `MutationObserver` is retained as a fallback for render paths that do
+not use `loadList()`.
 
-### 2.2 CSRF
+Each canonical DFM row gets exactly one fixed-size button:
 
-`/usr/local/emhttp/plugins/dynamix/include/local_prepend.php` is registered
-via php.ini's `auto_prepend_file`. It validates `$_POST['csrf_token']` against
-`/usr/local/emhttp/state/var.ini` for every POST request (except
-login/auth-request), then `unset()`s the field. Failures terminate the
-request with `exit()`.
+- identity is derived from the row's official `i[id^="row_"][data][type]`
+  element;
+- injection is idempotent;
+- the button remains present through idle, checking, working, error and done
+  states;
+- async checks change attributes and icon state, never insert/remove the slot;
+- document-level event delegation survives full row replacement;
+- generation counters discard stale async responses.
 
-Consequences for our plugin:
+This render-time decoration is what prevents the repeated appearance,
+disappearance and layout movement seen with asynchronous eligibility probes.
 
-- `api.php` must NOT re-implement CSRF.
-- The front-end must include `csrf_token` in the POST body.
-- The token must be passed from PHP to JS at render time (never hardcoded).
+## 3. Request flow
 
-We read the token in `RecycleInject.page` from `$var['csrf_token']` (populated
-by DefaultPageLayout) and fall back to parsing `var.ini` directly. It is then
-injected as `window.__recycleRuntime.csrfToken`.
-
-### 2.3 ZFS detection
-
-`zfs list -H -o mountpoint,name -t filesystem` is the canonical way to list
-dataset mountpoints. We parse it once per request, cache it, and sort by
-longest-mountpoint-first so the most specific dataset wins when paths nest.
-
-## 3. Architecture
-
-```
-[DFM Browse render]
-  -> DefaultPageLayout.php iterates find_pages('Buttons')
-  -> RecycleInject.page (Buttons:5) included AFTER DFM (3a)
-  -> emits <link recycle.css><script recycle.js>
-     + window.__recycleRuntime { csrfToken, apiBase, scopeRoots, i18n, ... }
-
-[recycle.js]
-  -> waits for table
-  -> wraps window.doAction / doActions / refreshList / renderList (rule 2.2)
-  -> MutationObserver fallback (rule 2.3)
-  -> ensureButton(row): idempotent, stable itemId, fixed 28x28 slot (rules 5,6)
-  -> document-level event delegation for click + keydown (rule 7)
-  -> click: two-step recycle protocol (see §3.1 below)
-
-[api.php]
-  -> Unraid auto_prepend verifies csrf_token (rule: do NOT re-implement CSRF)
-  -> require admin (assertAdmin)
-  -> dispatch: recycle | restore | purge | empty | list | status
-                | config_get | config_save | maintain_now
-  -> JSON response
-
-[cron.hourly/dynamix.file.recycle]
-  -> scripts/recycle-maintain
-  -> php Bootstrap.php maintain
-  -> Maintenance::run() (throttled by interval_hours)
-     1. age eviction
-     2. capacity eviction (LRU, per-volume)
-     3. auto-empty cron (optional)
-     4. log + history retention sweeps
-     5. SQLite VACUUM (optional)
+```text
+DFM row button
+  -> POST inspect(path, csrf_token)
+  -> admin + scope + topology + inode checks
+  <- inspection_token(path, dev, ino, mode, size, mtime, ctime, expiry)
+  -> user confirmation
+  -> POST recycle(path, inspection_token, csrf_token)
+  -> repeat all checks and verify the signed current inode state
+  -> pending database row
+  -> atomic rename into .RecycleBin
+  -> active database row + operation event
 ```
 
-### 3.1 Two-step recycle protocol (cross-filesystem confirmation)
+All API actions are POST-only, limited in body size and restricted to an
+explicit action whitelist. Unraid's `local_prepend.php` performs native CSRF
+validation before `api.php`; the plugin supplies the current token but does
+not implement a parallel CSRF scheme. Every action additionally requires an
+administrator session.
 
-A recycle operation moves the source into `{volume}/.RecycleBin`. When the
-source and destination share a filesystem, `rename()` is atomic and instant.
-When they don't (e.g. a ZFS dataset's child being moved across a dataset
-boundary, or an XFS file on disk1 whose `.RecycleBin` somehow lives on a
-different fs), the move degrades to a recursive `cp -a` followed by `rm`,
-which is slow and cannot be safely cancelled mid-way.
+## 4. Per-volume persistence
 
-We never silently take that slow path. Instead the recycle endpoint follows
-a two-step protocol:
+There is no centralized item database and no JSON-to-SQLite conversion.
 
-```
-CLIENT                          SERVER (api.php?action=recycle)
-  |  POST action=recycle           |
-  |  (no confirm field)            |
-  |------------------------------->|
-  |                                | precheck: sameFilesystem(src,dst)?
-  |                                |   yes -> perform rename(), return 200 ok
-  |                                |   no  -> return 202 {need_confirm, size, ...}
-  |<-------------------------------|
-  |  if 202:                       |
-  |    show confirm dialog         |
-  |    with size + warning         |
-  |  user clicks OK                |
-  |  POST action=recycle           |
-  |       confirm=1                |
-  |------------------------------->|
-  |                                | confirmed=true -> perform cp + rm
-  |                                | return 200 ok (or 4xx on failure)
-  |<-------------------------------|
+```text
+<supported-volume>/.RecycleBin/
+  .dynamix-file-recycle.sqlite
+  original/path/file.__recycle_<uuid>
 ```
 
-The first call is therefore **non-mutating** when cross-fs would be required.
-The actual move only happens after the user explicitly opts in. The
-generation counter in the front-end (rule 8) ensures that if the user clicks
-the button again while the dialog is open, stale confirmations cannot
-overwrite a newer state.
+Each supported array disk or ZFS dataset owns one SQLite shard. This keeps the
+metadata on the same persistence boundary as the recycled data. Global views
+open the shards on currently available, verified volumes and merge their
+results in memory.
 
+SQLite uses WAL mode, full synchronous writes and a busy timeout. Item states
+are `pending`, `active`, `restoring`, `restored`, `purging`, and `purged`.
+Transitional states are written before filesystem mutations. Opening a shard
+reconciles interrupted transitions against the source, destination and purge
+tombstone paths.
 
-## 4. Front-end rules mapping
+## 5. Filesystem operations
 
-The 10-rule guide maps to concrete code as follows.
+Recycle uses a same-filesystem `rename()` into a UUID-suffixed destination.
+Restore reserves a non-overwriting target and uses another atomic rename.
+Purge first renames the tracked item to a hidden tombstone and then deletes the
+tombstone without following symlinks. Empty-bin operations iterate tracked
+active rows; they do not sweep arbitrary files placed manually in the bin.
 
-| Rule | Implementation |
-|---|---|
-| 1. Render-time integration | `decorateRows()` runs inside the wrapped DFM function (called BEFORE the DFM render completes) |
-| 2.1 Use formal extension interface | None exists in DFM → wrap the next best thing |
-| 2.2 Wrap the render function | `wrapDfmFunctions()` wraps `doAction/doActions/refreshList/renderList` |
-| 2.3 MutationObserver as fallback | `startObserver()` with `observeReentry` guard to avoid loops |
-| 3. Static button, state machine only | `data-state` attribute drives icon/disabled/title; button never added/removed by async checks |
-| 4. Stable identity | `stableId(absPath)` = FNV-1a hash + length |
-| 5. Idempotent reconciliation | `ensureButton` early-returns on `data-recycle-injected` |
-| 6. Fixed placeholder | `.recycle-slot{position:absolute;width:28px;height:28px}` + `.recycle-cell-reserve{padding-right:44px}` |
-| 7. Event delegation | `document.addEventListener('click', onClickEvent, true)` + keyboard variant |
-| 8. Async race control | `generations[id]` counter; stale responses ignored |
-| 9. Error preserves button | `setState(btn, STATE_ERROR)` keeps button visible, changes colour/title |
-| 10. Overall pipeline | decorateRows → ensureButton (placeholder) → delegate → click → check → state update |
+A process-wide non-blocking `flock` serializes recycle, restore, purge and
+maintenance operations. Busy operations fail visibly rather than interleave.
 
-## 5. Acceptance criteria traceability
+## 6. Maintenance and logging
 
-| Acceptance criterion | Where addressed |
-|---|---|
-| Button stays during auto-refresh | Observer + delegation + idempotent `ensureButton` |
-| Button never duplicated | `data-recycle-injected` marker + slot query |
-| No row-height / column-width shift | Fixed 28×28 slot + 44px cell reserve |
-| Spinner does not enlarge button | 16×16 icon, fixed button size |
-| Button remains on API failure | `setState(error)` only — never `remove()` |
-| Stale responses ignored | `generations[id]` generation counter |
-| Button recovers after row replace | Observer + `data-recycle-injected` re-evaluated per render |
-| Self-writes don't trigger loops | `observeReentry` counter |
-| Per-row state independence | Per-id generation counter |
-| Keyboard + a11y | `aria-label`, `aria-disabled`, Enter/Space handler |
-| Light/dark/mobile stable | CSS variables + media query for toast |
+There is no unconditional hourly or daily maintenance job. When the user saves
+a cleanup expression, `Scheduler` writes exactly one plugin-owned `.cron` file
+under `/boot/config/plugins/dynamix.file.recycle/` and calls Unraid's official
+`update_cron` helper. An empty expression removes the entry. The scheduled run
+empties enabled recycle bins and performs age/capacity reconciliation, event
+and history retention, interruption recovery and optional SQLite VACUUM in the
+same operation. Manual maintenance remains an explicit API/CLI action and
+never performs the scheduled full empty.
 
-## 6. File layout (final)
+Runtime logs live under
+`/usr/local/emhttp/state/plugins/dynamix.file.recycle/logs/` and are expected
+to disappear at reboot. Errors are copied to the bounded persistent audit log
+under `/boot/config/plugins/dynamix.file.recycle/logs/`. Operation events are
+also recorded in the owning volume's SQLite shard.
 
-```
-source/dynamix.file.recycle/
-├── README.page                 # Tools → About (Tools:80)
-├── RecycleBin.page             # Tools → Recycle Bin (Tools:70)
-├── RecycleInject.page          # Buttons:5 — the JS/CSS injection point
-├── settings.page               # Settings → Dynamix File Recycle Bin (OtherSettings:30)
-├── api.php                     # single POST dispatcher
-├── dynamix.file.recycle.cfg.default
-├── include/
-│   ├── Bootstrap.php           # autoloader + CLI dispatcher + path constants
-│   ├── Container.php           # tiny DI
-│   ├── Config.php              # INI cfg reader/writer
-│   ├── FsInspector.php         # path/volume/ZFS detection
-│   ├── Security.php            # admin check, path sandbox, config sanitiser
-│   ├── Logger.php              # file logger + size rotation
-│   ├── I18n.php                # language file loader
-│   ├── History.php             # SQLite CRUD
-│   ├── Recycler.php            # move-to-bin
-│   ├── RecycleResult.php       # value object
-│   ├── Restorer.php            # restore-from-bin
-│   ├── Purger.php              # purge / empty
-│   └── Maintenance.php         # age + capacity + log sweeps
-├── javascript/
-│   ├── recycle.js
-│   └── recycle.css
-├── languages/
-│   ├── en_US.txt
-│   └── zh_CN.txt
-├── images/
-│   ├── dynamix.file.recycle.png
-│   └── dynamix.file.recycle.svg
-├── scripts/
-│   ├── install.sh
-│   ├── remove.sh
-│   └── recycle-maintain
-├── cron/
-│   ├── dynamix.file.recycle.cron
-│   └── dynamix.file.recycle.logrotate
-└── sql/
-    └── schema.sql
-```
+Uninstall preserves `.RecycleBin`, its database, settings and persistent audit
+logs. It removes only plugin code, scheduled tasks, runtime logs and locks.
 
-## 7. Risk register
+## 7. Per-volume policy
 
-| Risk | Mitigation |
-|---|---|
-| DFM render function names change in a future Unraid release | Observer fallback keeps the button working; wrapped-function list is configurable in `recycle.js` |
-| ZFS `zfs list` is slow / unavailable | Cached per request; absent → falls back to disk-only |
-| Unraid upgrade removes plugin directory | `.plg` re-installs via plugin manager; data under `/boot` survives |
-| User deletes `.RecycleBin` by hand | History row stays, marked `purged` with reason `manual` when restore fails to find the file |
-| CSRF token rotation mid-session | Token read at every Browse render, never cached in JS source |
-| SQLite contention between web + cron | WAL mode + short transactions; purges batch by row, not by sweep lock |
+The default `volumes.allowed = "*"` applies only until the Settings page is
+saved. The page enumerates `FsInspector::supportedVolumes()` and submits the
+checked roots. The backend revalidates every submitted root and stores a JSON
+array; an unsupported or stale selection rejects the entire save.
+
+An unchecked volume remains queryable in Tools -> Recycle Bin so existing data
+does not disappear from view. Recycler, restorer, purger and maintenance all
+enforce the allowlist before mutating it.
+
+## 8. Package and CA layout
+
+The Slackware package contains top-level `install/` and `usr/` paths, so it
+extracts the plugin to `/usr/local/emhttp/plugins/dynamix.file.recycle`.
+`dynamix.file.recycle.plg` has explicit install/remove methods, downloads a
+versioned package to `/boot/config/plugins/dynamix.file.recycle`, verifies
+SHA-256, and exposes a stable raw-main `pluginURL` for update discovery.
+
+Community Applications metadata is provided by `ca_profile.xml` and
+`plugins/dynamix-file-recycle.xml`.
+
+## 9. Known limitations
+
+- No `/mnt/user`, cache/pool, UD, remote, boot-device or USB workflow.
+- No cross-filesystem recycle or restore.
+- No symbolic-link or nested-mount handling.
+- DFM and Unraid 7.3.2 are the initial compatibility target.
+- Software can detect USB/removable transport but cannot always prove a disk's
+  physical enclosure. eSATA is the common ambiguous case.
+- A volume that is offline is absent from the global history view until it is
+  mounted and passes topology checks again.

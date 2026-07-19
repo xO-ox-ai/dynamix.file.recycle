@@ -1,16 +1,12 @@
 <?php
 /**
- * History.php — SQLite-backed history of recycled items.
+ * Per-volume SQLite history store.
  *
- * Every recycle/restore/purge mutates the `items` table. The `state` field
- * lets the Tools -> Recycle Bin page distinguish:
- *   - active   : still sitting in .RecycleBin, can be restored
- *   - restored : user restored it
- *   - purged   : user or maintenance permanently deleted it
+ * Each supported disk or ZFS dataset owns its authoritative database at:
+ *   <volume>/.RecycleBin/.dynamix-file-recycle.sqlite
  *
- * When history recording is DISABLED in config, we still keep a row for the
- * duration of `active` state (it is the only way to know what's in the bin),
- * but purge it from the table on transition out of `active`.
+ * There is no central database to copy or rebuild. Global views enumerate the
+ * currently online supported volumes and merge their query results.
  */
 
 declare(strict_types=1);
@@ -19,183 +15,224 @@ namespace DynamixFileRecycle;
 
 final class History
 {
-    private string $dbFile;
-    private Logger $logger;
-    private ?\PDO $pdo = null;
+    public const DB_NAME = '.dynamix-file-recycle.sqlite';
 
-    public function __construct(string $dbFile, Logger $logger)
+    private FsInspector $fs;
+    private Config $config;
+    private Logger $logger;
+
+    /** @var array<string,\PDO> */
+    private array $connections = [];
+
+    public function __construct(FsInspector $fs, Config $config, Logger $logger)
     {
-        $this->dbFile = $dbFile;
+        $this->fs = $fs;
+        $this->config = $config;
         $this->logger = $logger;
     }
 
-    /**
-     * Create / migrate the schema. Idempotent.
-     */
     public function initSchema(): void
     {
-        $pdo = $this->pdo();
-        $sql = is_file(SCHEMA_FILE) ? (string) file_get_contents(SCHEMA_FILE) : '';
-        if ($sql !== '') {
-            $pdo->exec($sql);
-        } else {
-            // Fallback inline schema if the .sql file is missing.
-            $this->ensureInlineSchema($pdo);
+        foreach ($this->managedVolumes() as $volume) {
+            $this->pdoForVolume($volume, false);
         }
     }
 
-    public function pdo(): \PDO
+    public function dbFile(string $volume): string
     {
-        if ($this->pdo !== null) {
-            return $this->pdo;
+        return rtrim($volume, '/') . '/' . FsInspector::RECYCLE_NAME . '/' . self::DB_NAME;
+    }
+
+    public function pdoForVolume(string $volume, bool $create = true): ?\PDO
+    {
+        $canonical = $this->fs->normalise($volume);
+        if ($canonical === null || !$this->fs->isApprovedVolumeRoot($canonical)) {
+            throw new \RuntimeException('History database volume is not an approved disk or ZFS dataset.', 400);
         }
-        $dir = dirname($this->dbFile);
-        if (!is_dir($dir)) {
-            @mkdir($dir, 0755, true);
+        if (isset($this->connections[$canonical])) {
+            return $this->connections[$canonical];
         }
-        $pdo = new \PDO('sqlite:' . $this->dbFile);
+
+        $root = $canonical . '/' . FsInspector::RECYCLE_NAME;
+        $dbFile = $root . '/' . self::DB_NAME;
+        if (!$create && !is_file($dbFile)) {
+            return null;
+        }
+        if (is_link($root) || is_link($dbFile)) {
+            throw new \RuntimeException('Recycle history path must not be a symbolic link.', 409);
+        }
+        if (!is_dir($root) && (!@mkdir($root, 0700, false) || !is_dir($root))) {
+            throw new \RuntimeException('Unable to create the per-volume recycle directory.', 500);
+        }
+        @chmod($root, 0700);
+
+        $pdo = new \PDO('sqlite:' . $dbFile);
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
         $pdo->setAttribute(\PDO::ATTR_DEFAULT_FETCH_MODE, \PDO::FETCH_ASSOC);
-        $pdo->exec('PRAGMA journal_mode = WAL');
-        $pdo->exec('PRAGMA synchronous  = NORMAL');
-        $pdo->exec('PRAGMA foreign_keys = ON');
-        $this->pdo = $pdo;
+        $pdo->exec('PRAGMA journal_mode=WAL');
+        $pdo->exec('PRAGMA synchronous=FULL');
+        $pdo->exec('PRAGMA foreign_keys=ON');
+        $pdo->exec('PRAGMA busy_timeout=5000');
+        $pdo->exec($this->schema());
+        $columns = $pdo->query('PRAGMA table_info(items)')->fetchAll();
+        $columnNames = array_column($columns, 'name');
+        if (!in_array('operation_target', $columnNames, true)) {
+            $pdo->exec('ALTER TABLE items ADD COLUMN operation_target TEXT');
+        }
+        @chmod($dbFile, 0600);
+        $this->connections[$canonical] = $pdo;
+        $this->recoverPending($canonical, $pdo);
         return $pdo;
     }
 
-    public function insertItem(array $data): int
+    public function insertItem(array $data): string
     {
-        $pdo = $this->pdo();
+        $id = (string) ($data['id'] ?? self::newId());
+        $pdo = $this->pdoForVolume((string) $data['volume']);
         $stmt = $pdo->prepare(
             'INSERT INTO items
-                (item_token, volume, recycle_path, original_path, size, is_dir,
-                 owner_uid, owner_gid, mode, mtime, deleted_at, state, meta_json)
+             (id, volume, recycle_path, original_path, size, is_dir, owner_uid,
+              owner_gid, mode, mtime, deleted_at, state, meta_json)
              VALUES
-                (:item_token, :volume, :recycle_path, :original_path, :size, :is_dir,
-                 :owner_uid, :owner_gid, :mode, :mtime, :deleted_at, :state, :meta_json)'
+             (:id, :volume, :recycle_path, :original_path, :size, :is_dir,
+              :owner_uid, :owner_gid, :mode, :mtime, :deleted_at, :state, :meta_json)'
         );
         $stmt->execute([
-            ':item_token'   => $data['item_token'],
-            ':volume'       => $data['volume'],
+            ':id' => $id,
+            ':volume' => $data['volume'],
             ':recycle_path' => $data['recycle_path'],
-            ':original_path'=> $data['original_path'],
-            ':size'         => $data['size'] ?? 0,
-            ':is_dir'       => $data['is_dir'] ?? 0,
-            ':owner_uid'    => $data['owner_uid'] ?? null,
-            ':owner_gid'    => $data['owner_gid'] ?? null,
-            ':mode'         => $data['mode'] ?? null,
-            ':mtime'        => $data['mtime'] ?? null,
-            ':deleted_at'   => $data['deleted_at'] ?? time(),
-            ':state'        => 'active',
-            ':meta_json'    => $data['meta_json'] ?? null,
+            ':original_path' => $data['original_path'],
+            ':size' => $data['size'] ?? 0,
+            ':is_dir' => $data['is_dir'] ?? 0,
+            ':owner_uid' => $data['owner_uid'] ?? null,
+            ':owner_gid' => $data['owner_gid'] ?? null,
+            ':mode' => $data['mode'] ?? null,
+            ':mtime' => $data['mtime'] ?? null,
+            ':deleted_at' => $data['deleted_at'] ?? time(),
+            ':state' => $data['state'] ?? 'active',
+            ':meta_json' => $data['meta_json'] ?? null,
         ]);
-        return (int) $pdo->lastInsertId();
+        return $id;
     }
 
-    /**
-     * Mark an item as restored. Returns true if a row was updated.
-     */
-    public function markRestored(int $id): bool
+    public function findById(string $id): ?array
     {
-        $stmt = $this->pdo()->prepare(
-            "UPDATE items
-             SET state='restored', purged_at=:ts, purged_reason='restore'
-             WHERE id=:id AND state='active'"
-        );
-        $stmt->execute([':id' => $id, ':ts' => time()]);
-        return $stmt->rowCount() > 0;
+        if (!self::validId($id)) {
+            return null;
+        }
+        foreach ($this->existingVolumes() as $volume) {
+            $pdo = $this->pdoForVolume($volume, false);
+            if ($pdo === null) {
+                continue;
+            }
+            $stmt = $pdo->prepare('SELECT * FROM items WHERE id=:id LIMIT 1');
+            $stmt->execute([':id' => $id]);
+            $row = $stmt->fetch();
+            if ($row !== false) {
+                return $row;
+            }
+        }
+        return null;
     }
 
-    public function markPurged(int $id, string $reason): bool
+    public function markRestored(string $id): bool
     {
-        $stmt = $this->pdo()->prepare(
-            "UPDATE items
-             SET state='purged', purged_at=:ts, purged_reason=:reason
-             WHERE id=:id AND state='active'"
-        );
-        $stmt->execute([':id' => $id, ':ts' => time(), ':reason' => $reason]);
-        return $stmt->rowCount() > 0;
+        return $this->transition($id, 'restored', 'restore', ['restoring', 'active']);
     }
 
-    public function findById(int $id): ?array
+    public function markActive(string $id, string $volume): bool
     {
-        $stmt = $this->pdo()->prepare('SELECT * FROM items WHERE id=:id');
+        $pdo = $this->pdoForVolume($volume, false);
+        if ($pdo === null) return false;
+        $stmt = $pdo->prepare("UPDATE items SET state='active' WHERE id=:id AND state='pending'");
         $stmt->execute([':id' => $id]);
-        $row = $stmt->fetch();
-        return $row === false ? null : $row;
+        return $stmt->rowCount() > 0;
     }
 
-    public function findByToken(string $token): ?array
+    public function deletePending(string $id, string $volume): void
     {
-        $stmt = $this->pdo()->prepare('SELECT * FROM items WHERE item_token=:t LIMIT 1');
-        $stmt->execute([':t' => $token]);
-        $row = $stmt->fetch();
-        return $row === false ? null : $row;
+        $pdo = $this->pdoForVolume($volume, false);
+        if ($pdo === null) return;
+        $stmt = $pdo->prepare("DELETE FROM items WHERE id=:id AND state='pending'");
+        $stmt->execute([':id' => $id]);
     }
 
-    /**
-     * Active items currently sitting in the bin.
-     *
-     * @return array<int,array>
-     */
+    public function markPurged(string $id, string $reason): bool
+    {
+        return $this->transition($id, 'purged', $reason, ['purging', 'active']);
+    }
+
+    public function beginTransition(string $id, string $from, string $to, string $target): bool
+    {
+        $row = $this->findById($id);
+        if ($row === null || $row['state'] !== $from) return false;
+        $pdo = $this->pdoForVolume((string) $row['volume'], false);
+        if ($pdo === null) return false;
+        $stmt = $pdo->prepare(
+            'UPDATE items SET state=:to,operation_target=:target WHERE id=:id AND state=:from'
+        );
+        $stmt->execute([':to' => $to, ':target' => $target, ':id' => $id, ':from' => $from]);
+        return $stmt->rowCount() > 0;
+    }
+
+    public function rollbackTransition(string $id, string $from, string $to): void
+    {
+        $row = $this->findById($id);
+        if ($row === null) return;
+        $pdo = $this->pdoForVolume((string) $row['volume'], false);
+        if ($pdo === null) return;
+        $stmt = $pdo->prepare(
+            'UPDATE items SET state=:to,operation_target=NULL WHERE id=:id AND state=:from'
+        );
+        $stmt->execute([':to' => $to, ':id' => $id, ':from' => $from]);
+    }
+
     public function listActive(?string $volume = null, int $limit = 500, int $offset = 0): array
     {
-        $sql = "SELECT * FROM items WHERE state='active'";
-        $args = [];
-        if ($volume !== null) {
-            $sql .= ' AND volume=:volume';
-            $args[':volume'] = $volume;
-        }
-        $sql .= ' ORDER BY deleted_at DESC LIMIT :limit OFFSET :offset';
-        $stmt = $this->pdo()->prepare($sql);
-        foreach ($args as $k => $v) {
-            $stmt->bindValue($k, $v);
-        }
-        $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, \PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
+        return $this->queryAcross("state='active'", $volume, $limit, $offset);
     }
 
-    /**
-     * All items (active + historical). Used by Tools -> Recycle Bin when
-     * history display is enabled.
-     *
-     * @return array<int,array>
-     */
     public function listAll(?string $volume = null, int $limit = 1000, int $offset = 0): array
     {
-        $sql = "SELECT * FROM items WHERE 1=1";
-        $args = [];
-        if ($volume !== null) {
-            $sql .= ' AND volume=:volume';
-            $args[':volume'] = $volume;
-        }
-        $sql .= ' ORDER BY deleted_at DESC LIMIT :limit OFFSET :offset';
-        $stmt = $this->pdo()->prepare($sql);
-        foreach ($args as $k => $v) {
-            $stmt->bindValue($k, $v);
-        }
-        $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, \PDO::PARAM_INT);
-        $stmt->execute();
-        return $stmt->fetchAll();
+        return $this->queryAcross('1=1', $volume, $limit, $offset);
     }
 
-    /**
-     * Oldest active items (for LRU capacity eviction).
-     *
-     * @return array<int,array>
-     */
+    public function listActiveBefore(int $cutoff): array
+    {
+        $rows = [];
+        foreach ($this->managedVolumes() as $volume) {
+            $pdo = $this->pdoForVolume($volume, false);
+            if ($pdo === null) continue;
+            $stmt = $pdo->prepare("SELECT * FROM items WHERE state='active' AND deleted_at<:cutoff");
+            $stmt->execute([':cutoff' => $cutoff]);
+            array_push($rows, ...$stmt->fetchAll());
+        }
+        return $rows;
+    }
+
+    public function listByState(string $state): array
+    {
+        if (!in_array($state, ['pending', 'active', 'restoring', 'restored', 'purging', 'purged'], true)) {
+            return [];
+        }
+        $rows = [];
+        foreach ($this->managedVolumes() as $volume) {
+            $pdo = $this->pdoForVolume($volume, false);
+            if ($pdo === null) continue;
+            $stmt = $pdo->prepare('SELECT * FROM items WHERE state=:state ORDER BY deleted_at ASC');
+            $stmt->execute([':state' => $state]);
+            array_push($rows, ...$stmt->fetchAll());
+        }
+        return $rows;
+    }
+
     public function listOldestActive(string $volume, int $limit = 100): array
     {
-        $stmt = $this->pdo()->prepare(
-            "SELECT * FROM items
-             WHERE state='active' AND volume=:volume
-             ORDER BY deleted_at ASC
-             LIMIT :limit"
+        $pdo = $this->pdoForVolume($volume, false);
+        if ($pdo === null) return [];
+        $stmt = $pdo->prepare(
+            "SELECT * FROM items WHERE state='active' ORDER BY deleted_at ASC LIMIT :limit"
         );
-        $stmt->bindValue(':volume', $volume);
         $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
@@ -203,117 +240,228 @@ final class History
 
     public function countActive(?string $volume = null): int
     {
-        $sql = "SELECT COUNT(*) FROM items WHERE state='active'";
-        $args = [];
-        if ($volume !== null) {
-            $sql .= ' AND volume=:volume';
-            $args[':volume'] = $volume;
-        }
-        $stmt = $this->pdo()->prepare($sql);
-        foreach ($args as $k => $v) {
-            $stmt->bindValue($k, $v);
-        }
-        $stmt->execute();
-        return (int) $stmt->fetchColumn();
+        return $this->aggregate('COUNT(*)', $volume);
     }
 
     public function countAll(): int
     {
-        return (int) $this->pdo()->query('SELECT COUNT(*) FROM items')->fetchColumn();
+        return $this->aggregate('COUNT(*)', null, '1=1');
     }
 
     public function totalActiveSize(?string $volume = null): int
     {
-        $sql = "SELECT COALESCE(SUM(size),0) FROM items WHERE state='active'";
-        $args = [];
-        if ($volume !== null) {
-            $sql .= ' AND volume=:volume';
-            $args[':volume'] = $volume;
-        }
-        $stmt = $this->pdo()->prepare($sql);
-        foreach ($args as $k => $v) {
-            $stmt->bindValue($k, $v);
-        }
-        $stmt->execute();
-        return (int) $stmt->fetchColumn();
+        return $this->aggregate('COALESCE(SUM(size),0)', $volume);
     }
 
-    /**
-     * Delete log rows older than $days. Used by Maintenance.
-     */
     public function pruneLog(int $days): int
     {
-        if ($days <= 0) {
-            return 0;
-        }
+        if ($days <= 0) return 0;
         $cutoff = time() - $days * 86400;
-        $stmt = $this->pdo()->prepare('DELETE FROM log WHERE ts < :cutoff');
-        $stmt->execute([':cutoff' => $cutoff]);
-        return $stmt->rowCount();
+        $count = 0;
+        foreach ($this->managedVolumes() as $volume) {
+            $pdo = $this->pdoForVolume($volume, false);
+            if ($pdo === null) continue;
+            $stmt = $pdo->prepare('DELETE FROM events WHERE ts<:cutoff');
+            $stmt->execute([':cutoff' => $cutoff]);
+            $count += $stmt->rowCount();
+        }
+        return $count;
     }
 
-    /**
-     * Drop historical (non-active) items older than $days. Used by Maintenance.
-     */
     public function pruneHistory(int $days): int
     {
-        if ($days <= 0) {
-            return 0;
-        }
+        if ($days <= 0) return 0;
         $cutoff = time() - $days * 86400;
-        $stmt = $this->pdo()->prepare(
-            "DELETE FROM items WHERE state IN ('restored','purged') AND COALESCE(purged_at, deleted_at) < :cutoff"
-        );
-        $stmt->execute([':cutoff' => $cutoff]);
-        return $stmt->rowCount();
+        $count = 0;
+        foreach ($this->managedVolumes() as $volume) {
+            $pdo = $this->pdoForVolume($volume, false);
+            if ($pdo === null) continue;
+            $stmt = $pdo->prepare(
+                "DELETE FROM items WHERE state IN ('restored','purged')
+                 AND COALESCE(purged_at,deleted_at)<:cutoff"
+            );
+            $stmt->execute([':cutoff' => $cutoff]);
+            $count += $stmt->rowCount();
+        }
+        return $count;
+    }
+
+    public function recordEvent(string $volume, string $level, string $action, string $path, string $message): void
+    {
+        try {
+            $pdo = $this->pdoForVolume($volume, true);
+            $stmt = $pdo->prepare(
+                'INSERT INTO events(ts,level,action,path,message) VALUES(:ts,:level,:action,:path,:message)'
+            );
+            $stmt->execute([
+                ':ts' => time(), ':level' => $level, ':action' => $action,
+                ':path' => $path, ':message' => $message,
+            ]);
+        } catch (\Throwable $e) {
+            $this->logger->error('history_event', $path, $e->getMessage());
+        }
     }
 
     public function vacuum(): void
     {
-        $this->pdo()->exec('VACUUM');
+        foreach ($this->managedVolumes() as $volume) {
+            $this->pdoForVolume($volume, false)?->exec('VACUUM');
+        }
     }
 
-    /**
-     * Inline fallback schema if the shipped .sql is missing.
-     */
-    private function ensureInlineSchema(\PDO $pdo): void
+    /** @return list<string> */
+    public function existingVolumes(): array
     {
-        $pdo->exec(
-            "CREATE TABLE IF NOT EXISTS items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                item_token TEXT NOT NULL UNIQUE,
-                volume TEXT NOT NULL,
-                recycle_path TEXT NOT NULL,
-                original_path TEXT NOT NULL,
-                size INTEGER NOT NULL DEFAULT 0,
-                is_dir INTEGER NOT NULL DEFAULT 0,
-                owner_uid INTEGER,
-                owner_gid INTEGER,
-                mode INTEGER,
-                mtime INTEGER,
-                deleted_at INTEGER NOT NULL,
-                state TEXT NOT NULL DEFAULT 'active',
-                purged_at INTEGER,
-                purged_reason TEXT,
-                meta_json TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_items_volume_state ON items(volume, state);
-            CREATE INDEX IF NOT EXISTS idx_items_deleted_at   ON items(deleted_at);
-            CREATE INDEX IF NOT EXISTS idx_items_state        ON items(state);
+        return array_values(array_filter(
+            $this->fs->supportedVolumes(),
+            fn(string $volume): bool => is_file($this->dbFile($volume)) && !is_link($this->dbFile($volume))
+        ));
+    }
 
-            CREATE TABLE IF NOT EXISTS log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts INTEGER NOT NULL,
-                level TEXT NOT NULL,
-                action TEXT,
-                path TEXT,
-                message TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_log_ts    ON log(ts);
-            CREATE INDEX IF NOT EXISTS idx_log_level ON log(level);
+    /** @return list<string> */
+    public function managedVolumes(): array
+    {
+        return array_values(array_filter(
+            $this->existingVolumes(),
+            fn(string $volume): bool => $this->config->isVolumeAllowed($volume)
+        ));
+    }
 
-            CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
-            INSERT OR IGNORE INTO meta(k,v) VALUES('schema_version','1');"
+    public static function newId(): string
+    {
+        $hex = bin2hex(random_bytes(16));
+        return substr($hex, 0, 8) . '-' . substr($hex, 8, 4) . '-4' . substr($hex, 13, 3)
+            . '-' . dechex((hexdec($hex[16]) & 0x3) | 0x8) . substr($hex, 17, 3)
+            . '-' . substr($hex, 20, 12);
+    }
+
+    public static function validId(string $id): bool
+    {
+        return preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/', $id) === 1;
+    }
+
+    /** @param list<string> $fromStates */
+    private function transition(string $id, string $state, string $reason, array $fromStates): bool
+    {
+        $row = $this->findById($id);
+        if ($row === null || !in_array($row['state'], $fromStates, true)) return false;
+        $pdo = $this->pdoForVolume((string) $row['volume'], false);
+        if ($pdo === null) return false;
+        if (!$this->config->getHistoryEnabled()) {
+            $stmt = $pdo->prepare('DELETE FROM items WHERE id=:id');
+            $stmt->execute([':id' => $id]);
+            return $stmt->rowCount() > 0;
+        }
+        $stmt = $pdo->prepare(
+            'UPDATE items SET state=:state,purged_at=:ts,purged_reason=:reason,operation_target=NULL
+             WHERE id=:id'
         );
+        $stmt->execute([':state' => $state, ':ts' => time(), ':reason' => $reason, ':id' => $id]);
+        return $stmt->rowCount() > 0;
+    }
+
+    private function queryAcross(string $where, ?string $volume, int $limit, int $offset): array
+    {
+        $limit = max(1, min(5000, $limit));
+        $offset = max(0, $offset);
+        $volumes = $volume !== null ? [$volume] : $this->existingVolumes();
+        $rows = [];
+        foreach ($volumes as $candidate) {
+            $pdo = $this->pdoForVolume($candidate, false);
+            if ($pdo === null) continue;
+            $stmt = $pdo->prepare("SELECT * FROM items WHERE $where ORDER BY deleted_at DESC LIMIT :limit");
+            $stmt->bindValue(':limit', $limit + $offset, \PDO::PARAM_INT);
+            $stmt->execute();
+            array_push($rows, ...$stmt->fetchAll());
+        }
+        usort($rows, fn(array $a, array $b): int => ((int) $b['deleted_at']) <=> ((int) $a['deleted_at']));
+        return array_slice($rows, $offset, $limit);
+    }
+
+    private function aggregate(string $expression, ?string $volume, string $where = "state='active'"): int
+    {
+        $sum = 0;
+        $volumes = $volume !== null ? [$volume] : $this->existingVolumes();
+        foreach ($volumes as $candidate) {
+            $pdo = $this->pdoForVolume($candidate, false);
+            if ($pdo !== null) {
+                $sum += (int) $pdo->query("SELECT $expression FROM items WHERE $where")->fetchColumn();
+            }
+        }
+        return $sum;
+    }
+
+    private function schema(): string
+    {
+        return <<<'SQL'
+CREATE TABLE IF NOT EXISTS items (
+  id TEXT PRIMARY KEY,
+  volume TEXT NOT NULL,
+  recycle_path TEXT NOT NULL,
+  original_path TEXT NOT NULL,
+  size INTEGER NOT NULL DEFAULT 0,
+  is_dir INTEGER NOT NULL DEFAULT 0,
+  owner_uid INTEGER,
+  owner_gid INTEGER,
+  mode INTEGER,
+  mtime INTEGER,
+  deleted_at INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'active',
+  purged_at INTEGER,
+  purged_reason TEXT,
+  operation_target TEXT,
+  meta_json TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_items_state_deleted ON items(state,deleted_at);
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  level TEXT NOT NULL,
+  action TEXT,
+  path TEXT,
+  message TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
+CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY,v TEXT);
+INSERT OR IGNORE INTO meta(k,v) VALUES('schema_version','2');
+SQL;
+    }
+
+    private function recoverPending(string $volume, \PDO $pdo): void
+    {
+        foreach ($pdo->query("SELECT * FROM items WHERE state='pending'")->fetchAll() as $row) {
+            $sourceExists = file_exists((string) $row['original_path']) || is_link((string) $row['original_path']);
+            $destExists = file_exists((string) $row['recycle_path']) || is_link((string) $row['recycle_path']);
+            if (!$sourceExists && $destExists) {
+                $this->markActive((string) $row['id'], $volume);
+                $this->recordEvent($volume, 'WARN', 'recover', (string) $row['recycle_path'], 'finalized pending recycle after interruption');
+            } elseif ($sourceExists && !$destExists) {
+                $this->deletePending((string) $row['id'], $volume);
+            } else {
+                $this->recordEvent($volume, 'ERROR', 'recover', (string) $row['recycle_path'], 'ambiguous pending recycle requires manual review');
+            }
+        }
+        foreach ($pdo->query("SELECT * FROM items WHERE state IN ('restoring','purging')")->fetchAll() as $row) {
+            $sourceExists = file_exists((string) $row['recycle_path']) || is_link((string) $row['recycle_path']);
+            $target = (string) ($row['operation_target'] ?? '');
+            $targetExists = $target !== '' && (file_exists($target) || is_link($target));
+            if ($row['state'] === 'restoring') {
+                if (!$sourceExists && $targetExists) {
+                    $this->markRestored((string) $row['id']);
+                } elseif ($sourceExists && !$targetExists) {
+                    $this->rollbackTransition((string) $row['id'], 'restoring', 'active');
+                } else {
+                    $this->recordEvent($volume, 'ERROR', 'recover', $target, 'ambiguous restore requires manual review');
+                }
+            } elseif ($row['state'] === 'purging') {
+                if (!$targetExists && !$sourceExists) {
+                    $this->markPurged((string) $row['id'], 'recovered_purge');
+                } elseif ($targetExists) {
+                    $this->recordEvent($volume, 'WARN', 'recover', $target, 'interrupted purge will resume during maintenance');
+                } elseif ($sourceExists) {
+                    $this->rollbackTransition((string) $row['id'], 'purging', 'active');
+                }
+            }
+        }
     }
 }

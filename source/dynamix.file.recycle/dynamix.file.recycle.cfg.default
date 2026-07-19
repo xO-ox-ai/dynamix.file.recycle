@@ -23,10 +23,12 @@ enabled = 1
 ; Drop rows older than this many days. 0 = keep forever.
 retention_days = 365
 
+[volumes]
+; "*" means all volumes that pass the current backend safety checks. The first
+; Settings save replaces this with an explicit JSON list selected by the user.
+allowed = "*"
+
 [maintenance]
-; How often (in hours) the cron should actually run maintenance. The cron
-; itself fires every hour, but it skips unless `interval_hours` has elapsed.
-interval_hours = 1
 ; Age-based eviction: items with deleted_at older than age_days are purged.
 ; 0 = disabled.
 age_days = 30
@@ -38,7 +40,9 @@ capacity_percent = 10
 capacity_absolute_gb = 0
 ; When capacity eviction triggers, purge oldest-first (LRU) until under limit.
 ; Optional auto-empty schedule (cron expression). Empty = disabled.
-; Example: "0 3 * * 0" = every Sunday 03:00.
+; This is the only automatic background trigger. Empty means no cron entry.
+; At the selected time enabled recycle bins are emptied and maintenance runs.
+; Example: "0 3 * * 0" = every Sunday at 03:00.
 auto_empty_cron =
 ; When 1, Maintenance will also vacuum the SQLite database periodically.
 vacuum_sqlite = 1
@@ -46,6 +50,3 @@ vacuum_sqlite = 1
 [security]
 ; Preserve owner/group/mode of moved items so they can be restored exactly.
 preserve_metadata = 1
-; Allow non-admin users to manage their own recycled items (experimental).
-; 0 = admin-only (recommended).
-allow_user_self_service = 0

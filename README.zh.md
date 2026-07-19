@@ -1,133 +1,133 @@
 # Dynamix File Recycle Bin 文件回收站
 
-> 🇬🇧 English version: [README.md](README.md)
+> English documentation: [README.md](README.md)
 
-为 Unraid **Dynamix File Manager（DFM）** 文件浏览器打造的**安全回收站插件**。
-本插件不再"永久删除"文件，而是在 DFM 文件浏览器的每一行旁添加一个独立的
-**"移入回收站"** 按钮，将文件或文件夹移动到对应盘/dataset 的 `.RecycleBin`
-目录中，方便随时浏览、还原或按策略自动清理。
+这是一个面向 Unraid Dynamix File Manager（DFM）的受保护回收站插件。它会在
+DFM 每一行旁固定显示**移入回收站**按钮，并通过同一文件系统内的原子重命名，
+把文件或目录移入所属卷的 `.RecycleBin`。
 
-- ✅ 在 DFM Browse 页面注入按钮，**不修改任何 Unraid 核心文件**（使用官方
-  `Menu='Buttons'` 注入通道）。
-- ✅ 每个卷一个回收站。v1 版本支持 `/mnt/disk*` 普通数据盘与独立的 ZFS
-  dataset（v1 暂不支持 `/mnt/user` 与 `/mnt/cache*`）。
-- ✅ 灵活的维护策略：按天年龄淘汰、按容量阈值（LRU）淘汰、可选定时清空、
-  日志级别与日志保留时长。
-- ✅ 界面与文档均为**中英双语**，跟随 Unraid 系统语言切换。
-- ✅ 符合 Unraid 7.x 的 CSRF 验证要求（依赖官方 `auto_prepend` 校验，插件
-  本身不重复实现 CSRF）。
+当前版本刻意只处理简单且能够验证的存储结构。按钮不会因为异步探测而出现、
+消失或导致布局抖动；点击后由后端做最终检查，不支持时会显示明确原因和建议。
+
+## 支持范围
+
+- Unraid 阵列挂载点（例如 `/mnt/disk1`）中的普通文件和目录。
+- 底层设备可以确认不是 USB、不是可移动介质的本地 ZFS dataset。每个 dataset
+  分别拥有自己的 `.RecycleBin` 和 SQLite 数据库。
+- 只允许同一文件系统内的原子重命名。
+
+以下情况会被明确拒绝：
+
+- `/mnt/user`、`/mnt/user0` 虚拟用户共享路径。
+- `/mnt/cache*` 以及其他缓存盘/存储池路径。
+- `/mnt/disks`（Unassigned Devices）、`/mnt/remotes`、远程文件系统和任意外置挂载。
+- `/boot`，包括 Unraid 系统启动 U 盘。
+- USB 后备存储、带可移动标志的设备、符号链接、嵌套挂载点，以及无法安全验证
+  底层拓扑的存储。
+- 任何跨文件系统的“复制后删除”操作。
+
+Linux 无法在所有情况下判断磁盘机箱的物理位置。例如 eSATA 硬盘盒可能表现得与
+内置 SATA 盘完全相同。插件会综合挂载归属、传输类型、可移动标志和 sysfs 拓扑，
+无法证明安全时一律拒绝，但软件不能百分之百证明磁盘物理上位于机箱内部。
 
 ## 环境要求
 
-| 组件 | 版本 |
+| 组件 | 要求 |
 |---|---|
-| Unraid OS | 7.3.2 及以上 |
-| PHP | 8.x（Unraid 自带） |
-| Dynamix File Manager | 已安装（Unraid 7.3+ 自带） |
-| 可选 | 使用 ZFS dataset 时需要 `zfs` 工具 |
+| Unraid OS | 7.3.2 或更高版本 |
+| Dynamix File Manager | 已安装 |
+| PHP | Unraid 自带的 PHP 8.x，并包含 PDO SQLite |
+| ZFS 支持 | Unraid 自带的 `zfs`、`zpool` 和 `lsblk` 工具 |
 
 ## 安装
 
-下面两种方式任选其一。两种方式使用的插件 URL 相同：
+### Unraid Community Applications
 
+项目通过 Community Applications 审核后，打开 **Apps**，搜索
+`Dynamix File Recycle Bin`。
+
+### Unraid Plugin Manager
+
+打开 **Plugins -> Install Plugin**，粘贴：
+
+```text
+https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg
 ```
-https://github.com/xO-ox-ai/dynamix.file.recycle/releases/download/v2026.07.19a/dynamix.file.recycle.plg
-```
 
-> 请始终从 [Releases 页面](https://github.com/xO-ox-ai/dynamix.file.recycle/releases)
-> 复制**对应版本**的 URL。上面这条链接指向最新已发布版本。
+插件管理器会下载带版本号的安装包、验证 SHA-256，然后执行安装钩子。安装完成后，
+请打开 **Settings -> Dynamix File Recycle Bin** 检查总开关和维护策略。
 
-### 方式 A — 通过 Unraid 网页后台安装（推荐）
-
-1. 打开 **Plugins → Install Plugin**。
-2. 将 Releases 页面中 `.plg` 的 URL 粘贴到输入框。
-3. 点击 **Install**。插件管理器会自动下载 `.txz` 包、校验 MD5、解包并执行
-   安装钩子（注册 cron、初始化 SQLite、复制默认配置）。
-4. 安装完成后 **Tools → Recycle Bin** 页面即出现，**Plugins** 列表中也会
-   新增本插件条目，便于日后升级。
-5. 打开 **Settings → Dynamix File Recycle Bin** 启用功能并调整维护策略。
-
-### 方式 B — 通过 Unraid 命令行安装
-
-适合无界面服务器或脚本化部署。
+命令行安装使用同一个官方插件管理器：
 
 ```bash
-# 1. 先把 .plg 描述文件下载到服务器。
-wget -O /tmp/dynamix.file.recycle.plg \
-  https://github.com/xO-ox-ai/dynamix.file.recycle/releases/download/v2026.07.19a/dynamix.file.recycle.plg
-
-# 2. 交给插件管理器执行。其行为与网页后台完全一致
-#    （下载 .txz → 校验 MD5 → 解包 → 执行钩子）。
-/usr/local/emhttp/plugins/dynamix/scripts/plugin install /tmp/dynamix.file.recycle.plg
+/usr/local/emhttp/plugins/dynamix.plugin.manager/scripts/plugin install \
+  https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg
 ```
 
-> 若你的 Unraid 版本不在该路径暴露 `plugin install` 命令，请使用网页方式
-> 安装；最终安装结果一致。
+## 基本使用
+
+1. 在 DFM 中打开物理阵列盘或受支持的 ZFS dataset。
+2. 点击文件或目录旁的回收图标。
+3. 后端检查当前路径、挂载点、文件系统和底层设备。
+4. 只有检查成功后才确认操作。
+5. 打开 **Tools -> Recycle Bin** 还原或永久清理已记录项目。
+
+设置页会列出当前通过后端安全检查的全部卷，首次安装时默认全部勾选。第一次保存后，
+配置会变为明确白名单：未勾选卷的历史仍然可见，但该卷上的新回收、还原、永久清理
+和自动维护都会被阻止。
+
+目录示例：
+
+| 原路径 | 回收后的路径 | 数据库 |
+|---|---|---|
+| `/mnt/disk1/Movies/x.mkv` | `/mnt/disk1/.RecycleBin/Movies/x.mkv.__recycle_UUID` | `/mnt/disk1/.RecycleBin/.dynamix-file-recycle.sqlite` |
+| `/mnt/tank/photos/a.jpg` | `/mnt/tank/.RecycleBin/photos/a.jpg.__recycle_UUID` | `/mnt/tank/.RecycleBin/.dynamix-file-recycle.sqlite` |
+
+ZFS 示例中的 `/mnt/tank` 必须是 dataset 的真实挂载点，插件不会把存储池别名或
+父文件系统当成目标 dataset。
+
+## 持久化与诊断
+
+- 回收内容和历史：`<volume>/.RecycleBin/` 及其中的 SQLite 数据库。
+- 持久设置：`/boot/config/plugins/dynamix.file.recycle/`。
+- 运行日志：`/usr/local/emhttp/state/plugins/dynamix.file.recycle/logs/dynamix.file.recycle.log`。
+- 重启后仍保留的错误审计：
+  `/boot/config/plugins/dynamix.file.recycle/logs/audit.log`。
+
+运行日志位于内存，重启后会消失。错误会同时写入有大小限制的持久审计日志；回收、
+还原和清理记录则保存在各卷自己的 SQLite 数据库中。
+
+插件不会安装独立的每小时或每日维护任务。只有在设置中填写“定时清理”cron 表达式
+后，才会通过 Unraid 官方 `update_cron` 生成本插件唯一的自动任务；留空时没有任何
+cron 条目。到点后会清空已启用回收站，并在同一次任务中完成数据库和历史维护。
 
 ## 卸载
 
-插件默认**保留数据**：各卷下的 `.RecycleBin/` 目录以及
-`/boot/config/plugins/dynamix.file.recycle/` 中的设置都会保留，方便日后
-重装不丢数据。
-
-### 方式 A — 通过 Unraid 网页后台卸载（推荐）
-
-1. 打开 **Plugins**，在列表中找到 **Dynamix File Recycle Bin**。
-2. 点击 **齿轮图标 → Remove Plugin**（或 **Uninstall**）。
-3. 确认卸载。卸载钩子会移除 cron 任务、删除插件代码与临时状态
-   （SQLite / 日志）。
-4. *（可选）* 如需彻底清除数据与设置，执行下面的手动清理命令。
-
-### 方式 B — 通过 Unraid 命令行卸载
+打开 **Plugins**，选择 **Dynamix File Recycle Bin**，点击 **Remove**。终端中的
+等效插件管理器命令是：
 
 ```bash
-# 1. 执行插件自带的卸载钩子（与插件管理器使用的路径一致）。
-PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
-if [ -x "$PLUGIN_DIR/scripts/remove.sh" ]; then
-    "$PLUGIN_DIR/scripts/remove.sh"
-else
-    echo "插件目录不存在 —— 无需通过钩子卸载。"
-fi
-
-# 2. （可选）清除保留的数据：删除所有卷下的 .RecycleBin/ 目录。
-#    建议先查看一遍再删除：
-find /mnt -maxdepth 4 -type d -name .RecycleBin -print
-#    rm -rf $(find /mnt -maxdepth 4 -type d -name .RecycleBin)
-
-# 3. （可选）清除 /boot 下的持久设置（重启后仍然存在）。
-rm -rf /boot/config/plugins/dynamix.file.recycle
+/usr/local/emhttp/plugins/dynamix.plugin.manager/scripts/plugin remove \
+  dynamix.file.recycle.plg
 ```
 
-## 使用
+卸载会移除插件代码、定时任务和临时日志，但会保留设置、持久审计日志，以及每个
+`.RecycleBin` 目录和其中的 SQLite 数据库。如需彻底清除，请先人工核对这些目录，
+确认不再需要恢复任何文件后再删除。
 
-- 打开 **Main → Browse**（Dynamix File Manager）。每行右侧多出一个按钮，
-  点击即可将该条目移入对应卷的回收站。
-- 打开 **Tools → Recycle Bin** 浏览、还原或永久删除回收站中的文件。
-- 打开 **Settings → Dynamix File Recycle Bin** 切换总开关、维护策略、日志
-  级别、历史记录与语言。
+## 安全机制
 
-## 回收站目录长什么样？
+- 所有 API 操作都要求已登录的 Unraid 管理员会话。
+- API 只接受 POST，并使用 Unraid 原生 CSRF 校验。
+- 短时有效的签名检查令牌会绑定路径、inode 和元数据，确保确认后处理的仍是刚才
+  检查过的同一个项目。
+- 符号链接别名、路径穿越、卷根目录和嵌套挂载点都会被拒绝。
+- 文件系统操作前后都会记录回收、还原和清理状态，便于恢复被中断的操作。
 
-| 原路径 | 回收站位置 |
-|---|---|
-| `/mnt/disk1/Movies/x.mkv` | `/mnt/disk1/.RecycleBin/Movies/x.mkv` |
-| `/mnt/tank/photos/2025/a.jpg`（ZFS） | `/mnt/tank/.RecycleBin/photos/2025/a.jpg` |
+## 支持
 
-原 owner/group/mode 会被完整保留，确保还原后文件属性一致。
+[GitHub Issues](https://github.com/xO-ox-ai/dynamix.file.recycle/issues)
 
-## 安全性
+## 许可证
 
-- 所有写操作均要求**管理员**登录。
-- 所有路径会被规范化并限制在原卷内，禁止 `..` 跨盘跳出。
-- 跨文件系统移动时回退为 `cp -a` + `rm`，确保正确性（仅当副本写入成功
-  后才删除原文件）。
-
-## 文档
-
-- [English README](README.md)
-- [设计文档](docs/DESIGN.md)
-- [更新日志](CHANGELOG.md)
-
-## License
-
-MIT — 详见 [LICENSE](LICENSE)。
+MIT，详见 [LICENSE](LICENSE)。

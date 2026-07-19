@@ -15,6 +15,8 @@ final class Container
     private ?FsInspector $fs = null;
     private ?History $history = null;
     private ?Security $security = null;
+    private ?OperationLock $operationLock = null;
+    private ?Scheduler $scheduler = null;
 
     public function config(): Config
     {
@@ -25,8 +27,8 @@ final class Container
     {
         return $this->logger ??= new Logger(
             LOG_FILE,
+            AUDIT_FILE,
             $this->config()->getLogLevel(),
-            $this->config()->getLogRetentionDays(),
             $this->config()->getLogMaxMib()
         );
     }
@@ -46,12 +48,22 @@ final class Container
 
     public function history(): History
     {
-        return $this->history ??= new History(DB_FILE, $this->logger());
+        return $this->history ??= new History($this->fs(), $this->config(), $this->logger());
     }
 
     public function security(): Security
     {
-        return $this->security ??= new Security($this->fs(), $this->history());
+        return $this->security ??= new Security($this->fs());
+    }
+
+    public function operationLock(): OperationLock
+    {
+        return $this->operationLock ??= new OperationLock();
+    }
+
+    public function scheduler(): Scheduler
+    {
+        return $this->scheduler ??= new Scheduler($this->config(), $this->security());
     }
 
     public function recycler(): Recycler
@@ -60,7 +72,9 @@ final class Container
             $this->fs(),
             $this->history(),
             $this->logger(),
-            $this->config()
+            $this->config(),
+            $this->security(),
+            $this->operationLock()
         );
     }
 
@@ -70,7 +84,9 @@ final class Container
             $this->fs(),
             $this->history(),
             $this->logger(),
-            $this->config()
+            $this->config(),
+            $this->security(),
+            $this->operationLock()
         );
     }
 
@@ -79,7 +95,10 @@ final class Container
         return new Purger(
             $this->fs(),
             $this->history(),
-            $this->logger()
+            $this->logger(),
+            $this->config(),
+            $this->security(),
+            $this->operationLock()
         );
     }
 
@@ -90,7 +109,8 @@ final class Container
             $this->fs(),
             $this->history(),
             $this->purger(),
-            $this->logger()
+            $this->logger(),
+            $this->operationLock()
         );
     }
 }

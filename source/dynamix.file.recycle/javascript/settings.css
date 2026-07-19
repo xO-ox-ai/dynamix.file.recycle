@@ -86,11 +86,22 @@
 }
 
 .recycle-settings .recycle-danger { border-color: #d9534f; }
-.recycle-settings .recycle-compact-action {
-    display: inline-block;
-    width: auto !important;
-    min-width: 0;
-    max-width: 100%;
+.recycle-settings .recycle-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+}
+.recycle-settings .recycle-action-row > button.recycle-compact-action {
+    display: inline-block !important;
+    flex: 0 0 auto !important;
+    justify-self: start !important;
+    width: fit-content !important;
+    inline-size: fit-content !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
     padding-left: 14px;
     padding-right: 14px;
 }

@@ -58,6 +58,11 @@ foreach ([
     'openBin' => 'settings.open_bin',
     'clearLogs' => 'settings.clear_logs',
     'clearLogsHint' => 'settings.clear_logs_hint',
+    'downloadDiagnostics' => 'settings.download_diagnostics',
+    'diagnosticsHint' => 'settings.diagnostics_hint',
+    'diagnosticsCollecting' => 'settings.diagnostics_collecting',
+    'diagnosticsDownloaded' => 'settings.diagnostics_downloaded',
+    'diagnosticsFailed' => 'settings.diagnostics_failed',
     'clearHistory' => 'settings.clear_history',
     'clearHistoryHint' => 'settings.clear_history_hint',
     'confirmClearLogs' => 'settings.confirm_clear_logs',
@@ -134,8 +139,12 @@ $recycleSettingsRuntime = [
         <dd><input id="recycle-log-size" type="number" name="log_max_size_mib" min="1" max="100"></dd>
         <dt data-i18n="logActions">Plugin log cleanup</dt>
         <dd>
-          <button type="button" id="recycle-clear-logs" class="recycle-compact-action"><i class="fa fa-trash" aria-hidden="true"></i> <span data-i18n="clearLogs">Clear this plugin's logs</span></button>
+          <div class="recycle-action-row">
+            <button type="button" id="recycle-clear-logs" class="recycle-compact-action"><i class="fa fa-trash" aria-hidden="true"></i> <span data-i18n="clearLogs">Clear this plugin's logs</span></button>
+            <button type="button" id="recycle-download-diagnostics" class="recycle-compact-action"><i class="fa fa-download" aria-hidden="true"></i> <span data-i18n="downloadDiagnostics">Download diagnostic logs</span></button>
+          </div>
           <span class="hint" data-i18n="clearLogsHint">Clear only this plugin's runtime, persistent audit and SQLite event logs.</span>
+          <span class="hint" data-i18n="diagnosticsHint">Set log level to DEBUG, reproduce the problem, then download this archive.</span>
         </dd>
       </dl>
     </section>
@@ -155,7 +164,9 @@ $recycleSettingsRuntime = [
         </dd>
         <dt data-i18n="historyActions">History cleanup</dt>
         <dd>
-          <button type="button" id="recycle-clear-history" class="recycle-danger recycle-compact-action"><i class="fa fa-history" aria-hidden="true"></i> <span data-i18n="clearHistory">Clear deleted-item history</span></button>
+          <div class="recycle-action-row">
+            <button type="button" id="recycle-clear-history" class="recycle-danger recycle-compact-action"><i class="fa fa-history" aria-hidden="true"></i> <span data-i18n="clearHistory">Clear deleted-item history</span></button>
+          </div>
           <span class="hint" data-i18n="clearHistoryHint">Deletes only restored and purged history rows. Active recycle items and files are preserved.</span>
         </dd>
       </dl>

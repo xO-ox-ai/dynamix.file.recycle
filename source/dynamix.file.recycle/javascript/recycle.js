@@ -124,7 +124,9 @@
                     inspection_token: item.token
                 }).then(function (result) {
                     if (result.status !== 200 || !result.json || result.json.ok !== true) {
-                        throw new Error(apiError(result));
+                        var error = new Error(apiError(result));
+                        error.recycleMoved = moved;
+                        throw error;
                     }
                     moved++;
                 });
@@ -172,7 +174,11 @@
             refreshList();
         }).catch(function (error) {
             showToast(error && error.message ? error.message : t('errorMessage'), true);
-            refreshList();
+            if (Number(error && error.recycleMoved || 0) > 0) {
+                refreshList();
+            } else {
+                setBusy(false, t('btnBatch'));
+            }
         });
     }
 

@@ -56,7 +56,11 @@ if ($LASTEXITCODE -ne 0) { throw 'DFM responsive UI contract failed.' }
     'source/dynamix.file.recycle/scripts/recycle-maintain'
 if ($LASTEXITCODE -ne 0) { throw 'Shell syntax checks failed.' }
 
-Get-Content 'plugins.json' -Raw | ConvertFrom-Json | Out-Null
+$pluginsJson = [System.IO.File]::ReadAllText(
+    (Resolve-Path 'plugins.json'),
+    [System.Text.Encoding]::UTF8
+)
+$pluginsJson | ConvertFrom-Json | Out-Null
 foreach ($xmlPath in @('ca_profile.xml', 'plugins\dynamix-file-recycle.xml')) {
     [xml](Get-Content $xmlPath -Raw) | Out-Null
 }

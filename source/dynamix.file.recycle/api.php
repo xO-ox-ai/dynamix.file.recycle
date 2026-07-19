@@ -23,6 +23,7 @@
  *   action=config_save                         write the cfg (admin)
  *   action=clear_logs                          clear file and SQLite event logs
  *   action=clear_history                       clear restored/purged audit rows
+ *   action=diagnostics                         download a temporary support bundle
  *   action=maintain_now                        run maintenance synchronously (admin)
  *
  * All responses are JSON.
@@ -55,6 +56,34 @@ function fail(string $message, int $http = 400, ?string $code = null): void
     respond($payload, $http);
 }
 
+/** @param array{path:string,filename:string,size:int} $archive */
+function sendDiagnosticsArchive(array $archive): never
+{
+    $path = $archive['path'];
+    $filename = $archive['filename'];
+    $size = $archive['size'];
+    $realPath = realpath($path);
+    $realRun = realpath(\DynamixFileRecycle\RUN_DIR);
+    $handle = is_file($path) && !is_link($path) ? @fopen($path, 'rb') : false;
+    $magic = is_resource($handle) ? (string) fread($handle, 2) : '';
+    if (is_resource($handle)) fclose($handle);
+    if ($realPath === false || $realRun === false || dirname($realPath) !== $realRun
+        || preg_match('/\Adynamix-file-recycle-diagnostics-[A-Za-z0-9._-]+\.tar\.gz\z/', $filename) !== 1
+        || $magic !== "\x1f\x8b" || $size < 20 || $size > 67108864) {
+        @unlink($path);
+        throw new \RuntimeException('Diagnostics archive validation failed.', 503);
+    }
+    header('Content-Type: application/gzip', true);
+    header('Content-Length: ' . $size);
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-store, max-age=0');
+    header('X-Content-Type-Options: nosniff');
+    register_shutdown_function(static function () use ($path): void { @unlink($path); });
+    readfile($path);
+    @unlink($path);
+    exit;
+}
+
 function publicErrorCode(\Throwable $e): string
 {
     $message = $e->getMessage();
@@ -82,6 +111,7 @@ function publicErrorCode(\Throwable $e): string
 }
 
 try {
+    $requestId = bin2hex(random_bytes(8));
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         fail('POST is required.', 405, 'method_not_allowed');
     }
@@ -94,9 +124,11 @@ try {
     $sec = $c->security();
     $logger = $c->logger();
     $action = trim((string) ($_POST['action'] ?? ''));
-    if (preg_match('/\A(?:inspect|recycle|restore|purge|empty|list|status|config_get|config_save|clear_logs|clear_history|maintain_now)\z/', $action) !== 1) {
+    if (preg_match('/\A(?:inspect|recycle|restore|purge|empty|list|status|config_get|config_save|clear_logs|clear_history|diagnostics|maintain_now)\z/', $action) !== 1) {
         fail('Unknown action.', 400, 'unknown_action');
     }
+    $requestPath = is_string($_POST['path'] ?? null) ? (string) $_POST['path'] : '';
+    $logger->debug('api_request', $requestPath, 'request_id=' . $requestId . ' action=' . $action);
     // For all mutating actions we require the plugin to be enabled.
     $mutatingActions = ['inspect', 'recycle', 'restore', 'purge', 'empty', 'maintain_now'];
     if (in_array($action, $mutatingActions, true)) {
@@ -274,6 +306,11 @@ try {
             respond(['ok' => true, 'cleared' => $count]);
         }
 
+        case 'diagnostics': {
+            $archive = $c->operationLock()->run(fn(): array => $c->diagnostics()->create());
+            sendDiagnosticsArchive($archive);
+        }
+
         case 'maintain_now': {
             $report = $c->maintenance()->run(true);
             $logger->info('maintain_now', '', 'manual run: ' . json_encode($report));
@@ -287,7 +324,15 @@ try {
     $code = $e->getCode();
     $http = is_int($code) && $code >= 400 && $code < 600 ? $code : 500;
     if (isset($logger)) {
-        try { $logger->error('api', '', $e->getMessage() . "\n" . $e->getTraceAsString()); } catch (\Throwable $_) {}
+        try {
+            $logger->error(
+                'api',
+                is_string($_POST['path'] ?? null) ? (string) $_POST['path'] : '',
+                'request_id=' . ($requestId ?? 'unavailable') . ' type=' . get_class($e)
+                    . ' file=' . $e->getFile() . ':' . $e->getLine()
+                    . ' message=' . $e->getMessage() . "\n" . $e->getTraceAsString()
+            );
+        } catch (\Throwable $_) {}
     }
     fail($e->getMessage(), $http, publicErrorCode($e));
 }

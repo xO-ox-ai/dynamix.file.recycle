@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19j` architecture and its conservative
+This document describes the `2026.07.19k` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -47,6 +47,15 @@ Settings and recycle details are separate static page shells. Settings is
 registered as a tile under User Programs (`Menu="Utilities"`); recycle details is under
 Tools -> Disk Utilities. Both load storage state through `api.php` after the
 page has rendered, so backend failures remain visible as inline errors.
+
+Failed operations that have not moved any item preserve the current DFM
+selection and restore the Recycle button state. A refresh occurs only after a
+successful or partially successful mutation.
+
+DEBUG logging records the dataset resolution, history-open, destination,
+filesystem-device, pending-row, rename and finalization stages. Settings can
+download a temporary `.tar.gz` support bundle containing these logs plus
+bounded storage, ZFS, mount, PHP/PDO and SQLite state snapshots.
 
 ## 3. Request flow
 

@@ -113,4 +113,14 @@ final class Container
             $this->operationLock()
         );
     }
+
+    public function diagnostics(): Diagnostics
+    {
+        return new Diagnostics(
+            $this->config(),
+            $this->fs(),
+            $this->history(),
+            $this->logger()
+        );
+    }
 }

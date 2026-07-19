@@ -111,9 +111,20 @@ pool aliases and parent filesystems are not substituted.
 - Reboot-surviving error audit:
   `/boot/config/plugins/dynamix.file.recycle/logs/audit.log`.
 
+Set **Log level** to **DEBUG**, save, reproduce an operation failure, then use
+**Download diagnostic logs** in Settings. The temporary `.tar.gz` contains
+plugin logs and bounded storage/PHP/SQLite snapshots, but never recycled file
+contents; the server-side archive is deleted immediately after download.
+
 The runtime log is stored in RAM and is lost on reboot. Errors are also copied
 to the bounded persistent audit log, while operation records live in each
 volume's SQLite database.
+
+Manually deleting a dataset's `.RecycleBin` permanently loses every contained
+item and that dataset's SQLite history. The plugin has no daemon holding the
+deleted database; a later recycle operation recreates an empty directory and
+schema and continues normally. Deleting it concurrently with an operation can
+make that request fail, but the failure remains inside the plugin request.
 
 No independent hourly or daily maintenance task is installed. Entering a
 scheduled-cleanup cron expression in Settings creates the plugin's only

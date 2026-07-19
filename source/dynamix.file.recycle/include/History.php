@@ -46,6 +46,7 @@ final class History
     public function pdoForVolume(string $volume, bool $create = true): ?\PDO
     {
         $canonical = $this->fs->normalise($volume);
+        $this->logger->debug('history_open_start', $volume, 'canonical=' . ($canonical ?? 'null') . ' create=' . ($create ? '1' : '0'));
         if ($canonical === null || !$this->fs->isApprovedVolumeRoot($canonical)) {
             throw new \RuntimeException('History database volume is not an approved disk or ZFS dataset.', 400);
         }
@@ -65,6 +66,12 @@ final class History
             throw new \RuntimeException('Unable to create the per-volume recycle directory.', 500);
         }
         @chmod($root, 0700);
+        $rootStat = @stat($root);
+        $this->logger->debug(
+            'history_root_ready',
+            $canonical,
+            'root=' . $root . ' dev=' . (int) ($rootStat['dev'] ?? -1) . ' db_exists=' . (is_file($dbFile) ? '1' : '0')
+        );
 
         $pdo = new \PDO('sqlite:' . $dbFile);
         $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
@@ -79,6 +86,11 @@ final class History
         if (!in_array('operation_target', $columnNames, true)) {
             $pdo->exec('ALTER TABLE items ADD COLUMN operation_target TEXT');
         }
+        $this->logger->debug(
+            'history_schema_ready',
+            $canonical,
+            'db=' . $dbFile . ' columns=' . implode(',', array_map('strval', $columnNames))
+        );
         @chmod($dbFile, 0600);
         $this->connections[$canonical] = $pdo;
         $this->recoverPending($canonical, $pdo);

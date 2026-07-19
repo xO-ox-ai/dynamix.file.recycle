@@ -137,15 +137,25 @@ check(str_contains($settingsJs, "'clear_history'"), 'settings do not expose inac
 check(str_contains($settingsJs, 'volume.hierarchy'), 'settings do not render structured volume hierarchy');
 check(strpos($settings, 'id="recycle-clear-logs"') < strpos($settings, 'data-i18n="history"'), 'log cleanup is not inside the Logging section');
 check(strpos($settings, 'id="recycle-clear-history"') < strpos($settings, 'data-i18n="maintenance"'), 'history cleanup is not inside the History section');
-check(str_contains($settingsCss, 'width: auto !important'), 'section cleanup buttons still expand to the full settings column');
+check(str_contains($settingsCss, 'inline-size: fit-content !important'), 'section cleanup buttons still expand to the full settings column');
+check(str_contains($settingsCss, '.recycle-action-row > button.recycle-compact-action'), 'cleanup buttons are not isolated from Unraid grid stretching');
+check(str_contains($settings, 'id="recycle-download-diagnostics"'), 'settings do not expose diagnostic download');
+check(str_contains($settingsJs, "body.append('action', 'diagnostics')"), 'settings diagnostic button does not call the API');
 check(str_contains($api, "'supported_volumes' => \$supportedVolumes"), 'settings API does not return validated volumes');
 check(str_contains($api, "case 'clear_logs'"), 'log cleanup API action is missing');
 check(str_contains($api, "case 'clear_history'"), 'history cleanup API action is missing');
+check(str_contains($api, "case 'diagnostics'"), 'diagnostic download API action is missing');
 check(str_contains($api, "'hierarchy' => \$display['hierarchy']"), 'volume hierarchy metadata is missing');
 
 $binJs = source('source/dynamix.file.recycle/javascript/recycle-bin.js');
 check(str_contains($binJs, "request('list'"), 'Recycle Bin details do not load through the API');
 check(str_contains($binJs, "request(action, { id:"), 'Recycle Bin restore/purge actions are missing');
+
+$diagnostics = source('source/dynamix.file.recycle/include/Diagnostics.php');
+check(str_contains($diagnostics, "'pdo_drivers' => \\PDO::getAvailableDrivers()"), 'diagnostics omit PDO driver availability');
+check(str_contains($diagnostics, "'integrity_check'"), 'diagnostics omit SQLite integrity state');
+check(str_contains($diagnostics, "'zfs-list.txt'"), 'diagnostics omit ZFS topology');
+check(str_contains($recycler, "\$stage = 'rename'"), 'recycler does not log the rename stage');
 
 $menuLanguage = source('source/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt');
 check(str_contains($menuLanguage, 'Dynamix File Recycle Bin=文件回收站'), 'Chinese Unraid menu translation is missing');

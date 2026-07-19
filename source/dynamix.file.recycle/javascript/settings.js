@@ -8,7 +8,8 @@
     var openBin = document.getElementById('recycle-open-bin');
     var clearLogs = document.getElementById('recycle-clear-logs');
     var clearHistory = document.getElementById('recycle-clear-history');
-    if (!runtime || !form || !notice || !volumeList || !openBin || !clearLogs || !clearHistory) return;
+    var downloadDiagnostics = document.getElementById('recycle-download-diagnostics');
+    if (!runtime || !form || !notice || !volumeList || !openBin || !clearLogs || !clearHistory || !downloadDiagnostics) return;
 
     var catalog = runtime.i18n && typeof runtime.i18n === 'object' ? runtime.i18n : {};
     function t(key, fallback) { return typeof catalog[key] === 'string' ? catalog[key] : fallback; }
@@ -271,6 +272,48 @@
             'historyCleared',
             'Cleared %d historical records.'
         );
+    });
+
+    downloadDiagnostics.addEventListener('click', function () {
+        downloadDiagnostics.disabled = true;
+        showNotice('progress', t('diagnosticsCollecting', 'Collecting diagnostic logs...'));
+        var body = new URLSearchParams();
+        body.append('action', 'diagnostics');
+        body.append('csrf_token', runtime.csrfToken || '');
+        fetch(runtime.apiUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: body.toString()
+        }).then(function (response) {
+            var type = String(response.headers.get('Content-Type') || '').toLowerCase();
+            if (!response.ok || type.indexOf('gzip') < 0) {
+                return response.json().catch(function () { return null; }).then(function (payload) {
+                    throw new Error(payload && payload.error ? payload.error : t('diagnosticsFailed', 'Unable to download diagnostic logs.'));
+                });
+            }
+            return response.blob().then(function (blob) {
+                if (blob.size < 20) throw new Error(t('diagnosticsFailed', 'Unable to download diagnostic logs.'));
+                var disposition = response.headers.get('Content-Disposition') || '';
+                var match = disposition.match(/filename="([A-Za-z0-9._-]+)"/);
+                var filename = match ? match[1] : 'dynamix-file-recycle-diagnostics.tar.gz';
+                var url = URL.createObjectURL(blob);
+                var link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+            });
+        }).then(function () {
+            showNotice('success', t('diagnosticsDownloaded', 'Diagnostic logs downloaded.'));
+        }).catch(function (error) {
+            showNotice('error', error.message);
+        }).finally(function () {
+            downloadDiagnostics.disabled = false;
+        });
     });
     load();
 })();

@@ -18,6 +18,8 @@ final class Recycler
 
     public function inspect(string $absPath): array
     {
+        $trace = bin2hex(random_bytes(6));
+        $this->logger->debug('inspect_start', $absPath, 'trace=' . $trace);
         $canonical = $this->security->assertPathInScope($absPath);
         $volume = $this->fs->resolveVolume($canonical);
         $stat = @lstat($canonical);
@@ -25,6 +27,12 @@ final class Recycler
             throw new \RuntimeException('The selected item could not be inspected.', 409);
         }
         $this->assertVolumeAllowed($volume['volume']);
+        $this->logger->debug(
+            'inspect_ready',
+            $canonical,
+            'trace=' . $trace . ' volume=' . $volume['volume'] . ' fs=' . $volume['fs']
+                . ' relative=' . $volume['relative'] . ' dev=' . (int) $stat['dev'] . ' ino=' . (int) $stat['ino']
+        );
         return [
             'ok' => true,
             'path' => $canonical,
@@ -40,13 +48,25 @@ final class Recycler
     public function recycle(string $absPath, string $inspectionToken): RecycleResult
     {
         return $this->lock->run(function () use ($absPath, $inspectionToken): RecycleResult {
+            $trace = bin2hex(random_bytes(6));
+            $stage = 'verify_token';
+            $canonical = $absPath;
+            $this->logger->debug('recycle_start', $absPath, 'trace=' . $trace . ' token_bytes=' . strlen($inspectionToken));
+            try {
             $canonical = $this->security->verifyInspectionToken($inspectionToken, $absPath);
+            $stage = 'resolve_dataset';
             $volume = $this->fs->resolveVolume($canonical);
             $stat = @lstat($canonical);
             if ($volume === null || $stat === false) {
                 throw new \RuntimeException('The selected item changed before recycling.', 409);
             }
             $this->assertVolumeAllowed($volume['volume']);
+            $this->logger->debug(
+                'recycle_resolved',
+                $canonical,
+                'trace=' . $trace . ' volume=' . $volume['volume'] . ' fs=' . $volume['fs']
+                    . ' relative=' . $volume['relative'] . ' source_dev=' . (int) $stat['dev']
+            );
 
             $isDir = ((((int) $stat['mode']) & 0170000) === 0040000);
             $meta = [
@@ -64,16 +84,30 @@ final class Recycler
 
             // Opening the shard creates and validates the top-level recycle
             // directory before any item is moved.
+            $stage = 'history_open';
+            $this->logger->debug('recycle_history_open', $canonical, 'trace=' . $trace . ' root=' . $recycleRoot);
             $this->history->pdoForVolume($volume['volume'], true);
+            $stage = 'destination_prepare';
             $this->ensureDestinationDirectory($destDir, $recycleRoot);
             $dest = $destDir . '/' . basename($canonical) . '.__recycle_' . $id;
             if (file_exists($dest) || is_link($dest)) {
                 throw new \RuntimeException('The generated recycle destination already exists.', 409);
             }
+            $stage = 'filesystem_check';
+            $sourceParentStat = @stat(dirname($canonical));
+            $destParentStat = @stat(dirname($dest));
+            $this->logger->debug(
+                'recycle_filesystem_check',
+                $canonical,
+                'trace=' . $trace . ' destination=' . $dest
+                    . ' source_parent_dev=' . (int) ($sourceParentStat['dev'] ?? -1)
+                    . ' destination_parent_dev=' . (int) ($destParentStat['dev'] ?? -1)
+            );
             if (!$this->fs->sameFilesystem($canonical, $dest)) {
                 throw new \RuntimeException('Cross-filesystem recycling is not supported in this release.', 409);
             }
 
+            $stage = 'history_insert';
             $this->history->insertItem([
                 'id' => $id,
                 'volume' => $volume['volume'],
@@ -89,11 +123,21 @@ final class Recycler
                 'state' => 'pending',
                 'meta_json' => json_encode(['fs' => $volume['fs']], JSON_UNESCAPED_SLASHES),
             ]);
+            $this->logger->debug('recycle_pending_recorded', $canonical, 'trace=' . $trace . ' id=' . $id . ' destination=' . $dest);
 
+            $stage = 'rename';
+            error_clear_last();
             if (!@rename($canonical, $dest)) {
+                $renameError = error_get_last();
                 $this->history->deletePending($id, $volume['volume']);
-                throw new \RuntimeException('The atomic move into the recycle bin failed.', 500);
+                throw new \RuntimeException(
+                    'The atomic move into the recycle bin failed.'
+                        . (is_array($renameError) && isset($renameError['message']) ? ' ' . $renameError['message'] : ''),
+                    500
+                );
             }
+            $this->logger->debug('recycle_renamed', $canonical, 'trace=' . $trace . ' id=' . $id . ' destination=' . $dest);
+            $stage = 'history_finalize';
             if (!$this->history->markActive($id, $volume['volume'])) {
                 $this->logger->error('recycle_finalize', $dest, 'item moved but pending database row could not be finalized');
                 throw new \RuntimeException('The item was moved, but its recovery record needs automatic repair. Do not alter the recycle bin.', 500);
@@ -108,6 +152,15 @@ final class Recycler
             $this->history->recordEvent($volume['volume'], 'AUDIT', 'recycle', $canonical, 'moved atomically to ' . $dest);
             $this->logger->info('recycle', $canonical, 'moved atomically to ' . $dest);
             return RecycleResult::ok($id, $canonical, $dest, $meta['size'], $isDir);
+            } catch (\Throwable $e) {
+                $this->logger->error(
+                    'recycle_failed',
+                    $canonical,
+                    'trace=' . $trace . ' stage=' . $stage . ' type=' . get_class($e)
+                        . ' file=' . $e->getFile() . ':' . $e->getLine() . ' message=' . $e->getMessage()
+                );
+                throw $e;
+            }
         });
     }
 

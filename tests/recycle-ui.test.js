@@ -119,6 +119,23 @@ setTimeout(() => {
     assert.strictEqual(requests[0].path, '/mnt/disk1/example.txt', 'selected DFM row path was not inspected');
     assert.strictEqual(requests[1].path, '/mnt/disk1/example.txt', 'inspected path was not recycled');
     assert.strictEqual(refreshed, true, 'DFM list was not refreshed after recycling');
-    console.log('DFM bottom-control contract passed.');
-    process.exit(0);
+    requests.length = 0;
+    refreshed = false;
+    global.fetch = (url, options) => {
+        const body = new URLSearchParams(options.body);
+        const action = body.get('action');
+        requests.push({ action, path: body.get('path') });
+        if (action === 'inspect') {
+            return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({ ok: true, inspection_token: 'token-2' }) });
+        }
+        return Promise.resolve({ status: 500, ok: false, json: () => Promise.resolve({ ok: false, error: 'simulated failure' }) });
+    };
+    recycle.disabled = false;
+    recycle.listeners.click();
+    setTimeout(() => {
+        assert.strictEqual(refreshed, false, 'failed non-mutating recycle unexpectedly refreshed DFM and cleared selection');
+        assert.strictEqual(recycle.disabled, false, 'failed non-mutating recycle did not restore the selected action state');
+        console.log('DFM bottom-control contract passed.');
+        process.exit(0);
+    }, 20);
 }, 20);

@@ -9,6 +9,22 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19k] - 2026-07-19
+
+### Added
+- Added a downloadable diagnostic-log bundle with plugin logs, configuration,
+  PHP/PDO capabilities, ZFS/mount/block-device state and per-volume SQLite
+  integrity/state snapshots.
+- Added detailed DEBUG stages around inspection, history initialization,
+  destination creation, filesystem checks, pending-row insertion, rename and
+  finalization.
+
+### Fixed
+- Failed non-mutating recycle attempts now preserve DFM selection and restore
+  the Recycle button instead of refreshing the list.
+- Wrapped cleanup controls in a dedicated flex row and constrained their inline
+  size, overriding Unraid's grid-item stretch behavior without shortening text.
+
 ## [2026.07.19j] - 2026-07-19
 
 ### Fixed

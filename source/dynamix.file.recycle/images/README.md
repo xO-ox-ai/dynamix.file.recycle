@@ -2,8 +2,8 @@
 
 This directory holds the plugin's branding images.
 
-- `dynamix.file.recycle.svg`  — vector source.
-- `dynamix.file.recycle.png`  — 128×128 PNG (used by `plugins.json`).
+- `dynamix.file.recycle.svg`  — vector source used by Community Applications.
+- `dynamix.file.recycle.png`  — legacy raster fallback.
 
 If the PNG is missing you can regenerate it from the SVG with ImageMagick:
 

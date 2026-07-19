@@ -3,8 +3,8 @@
  *
  * Design constraints (see DESIGN.md §2.5):
  *   - Fixed 28x28 footprint so column widths never shift on state changes.
- *   - The slot is inserted before DFM's native action icons in the HTML that
- *     DFM commits, so the footprint is present from the first painted frame.
+ *   - The slot is inserted into DFM's always-visible name cell in the HTML it
+ *     commits, so responsive action-column hiding cannot remove the control.
  *   - Light/dark theme support uses Unraid's existing CSS variables
  *     (--btn-bg, --text-color, etc.) when present, with sane fallbacks.
  *   - Mobile-friendly: button never shrinks below 28x28, icons are 16x16.
@@ -25,8 +25,8 @@
     pointer-events: none;
 }
 
-.recycle-cell-reserve {
-    white-space: nowrap;
+.recycle-cell-anchor > .recycle-slot {
+    flex: 0 0 28px;
 }
 
 .recycle-action {

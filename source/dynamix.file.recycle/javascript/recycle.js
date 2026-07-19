@@ -26,8 +26,12 @@
 
     var RT = window.__recycleRuntime;
     if (!RT) return;                 // plugin not properly bootstrapped.
-    if (!RT.enabled) return;          // master switch off; nothing to do.
+    if (!RT.enabled) {
+        console.info('[Dynamix File Recycle Bin] disabled by plugin settings');
+        return;
+    }
     if (!/(?:^|\/)Browse(?:\/|$)/.test(window.location.pathname)) return;
+    console.info('[Dynamix File Recycle Bin] Browse runtime loaded', RT.version || 'unknown');
 
     var STATE_IDLE = 'idle';
     var STATE_CHECKING = 'checking';
@@ -121,21 +125,23 @@
     }
 
     function ensureSlot(row) {
-        // Slot lives in the LAST cell of the row so the layout reads naturally.
+        // DFM hides its rightmost action columns at narrower desktop widths.
+        // The name cell (third column) remains visible, so the fixed slot must
+        // live there or a successfully injected control can still disappear.
         var cells = row.children;
-        var last = cells[cells.length - 1];
-        if (!last) {
+        var anchor = cells[2] || null;
+        if (!anchor) {
             // Row without cells; skip rather than guess.
             return null;
         }
-        if (!last.classList.contains('recycle-cell-reserve')) {
-            last.classList.add('recycle-cell-reserve');
+        if (!anchor.classList.contains('recycle-cell-anchor')) {
+            anchor.classList.add('recycle-cell-anchor');
         }
-        var slot = last.querySelector('.recycle-slot');
+        var slot = anchor.querySelector('.recycle-slot');
         if (!slot) {
             slot = document.createElement('span');
             slot.className = 'recycle-slot';
-            last.insertBefore(slot, last.firstChild);
+            anchor.insertBefore(slot, anchor.firstChild);
         }
         return slot;
     }
@@ -164,8 +170,14 @@
         try {
             container = container || getTable();
             var rows = getRows(container);
+            var decorated = 0;
             for (var i = 0; i < rows.length; i++) {
+                var before = rows[i].getAttribute('data-recycle-injected');
                 ensureButton(rows[i]);
+                if (before !== '1' && rows[i].getAttribute('data-recycle-injected') === '1') decorated++;
+            }
+            if (decorated > 0) {
+                console.info('[Dynamix File Recycle Bin] controls inserted', decorated);
             }
             // If a row was replaced (data-recycle-injected lost), it will be
             // re-decorated here.
@@ -411,6 +423,8 @@
             }
             if (!container && retries > 0) {
                 setTimeout(function () { tryBoot(retries - 1); }, 200);
+            } else if (!container) {
+                console.error('[Dynamix File Recycle Bin] DFM table.indexer was not found');
             }
         }
         tryBoot(25); // up to 5 seconds

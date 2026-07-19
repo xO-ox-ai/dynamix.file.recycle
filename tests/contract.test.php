@@ -29,6 +29,9 @@ check(str_contains($plg, 'raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycl
 check(str_contains($plg, '/boot/config/plugins/&name;/&packageName;'), 'release package is not cached on /boot');
 check(str_contains($plg, 'releases/download/&version;/&packageName;'), 'release URL must use the exact version without a v prefix');
 check(!str_contains($plg, 'releases/download/v&version;'), 'release URL still adds an unwanted v prefix');
+check(str_contains($plg, '<!ENTITY launch    "Tools/DynamixFileRecycle">'), 'Plugin Manager launch path is not host-relative');
+check(!str_contains($plg, '<!ENTITY launch    "/Tools/'), 'Plugin Manager launch path can become a protocol-relative host');
+check(str_contains($plg, 'icon="recycle"'), 'Plugin Manager does not use the recycle icon');
 
 $api = source('source/dynamix.file.recycle/api.php');
 check(str_contains($api, "REQUEST_METHOD'] ?? '') !== 'POST'"), 'API does not require POST');
@@ -71,7 +74,7 @@ check(str_contains($recycler, 'isVolumeAllowed'), 'recycler does not enforce the
 $settings = source('source/dynamix.file.recycle/DynamixFileRecycle.page');
 check(str_contains($settings, 'allowed_volumes[]'), 'settings page does not expose per-volume management switches');
 check(str_contains($settings, 'supportedVolumes()'), 'volume switches are not built from currently supported volumes');
-check(str_contains($settings, 'Menu="DiskUtilities"'), 'plugin tile is not registered under Disk Utilities');
+check(str_contains($settings, 'Menu="OtherSettings:30 DiskUtilities:30"'), 'settings page is not registered in both expected menus');
 check(str_contains($settings, 'Title="Dynamix File Recycle Bin"'), 'plugin title is not a translatable English key');
 check(str_contains($settings, 'Icon="recycle"'), 'plugin tile does not use a valid Unraid icon');
 check(!str_contains($settings, 'name="language"'), 'settings page still overrides the Unraid system language');
@@ -84,20 +87,23 @@ check(!preg_match('/\AMenu=/m', $recyclePage), 'Recycle Bin helper route is stil
 check(!str_contains($recyclePage, 'assertAdmin'), 'Recycle Bin page still relies on a non-portable session shape');
 
 $inject = source('source/dynamix.file.recycle/RecycleInject.page');
-check(str_contains($inject, "parse_plugin('dynamix.file.recycle')"), 'Unraid menu translations are not loaded');
+check(str_contains($inject, "parse_ini_file("), 'plugin-local Unraid menu translations are not loaded');
+check(!str_contains($inject, 'parse_plugin('), 'menu translation still depends on Unraid global plugin cache state');
 check(str_contains($inject, "Link='recycle-runtime-hook'"), 'runtime hook can appear as an unwanted navigation button');
 check(substr_count($inject, 'autov(') === 2, 'front-end assets do not use Unraid cache busting');
 check(!str_contains($inject, '$onBrowse'), 'server-side Browse detection can still suppress the DFM button');
+check(str_contains($inject, "'enabled'    => \$enabled"), 'disabled state prevents the front-end assets from loading for diagnostics');
 check(!str_contains($api, 'assertAdmin'), 'API still relies on a non-portable session shape');
 check(str_contains($js, "window.location.pathname"), 'front-end does not identify the DFM Browse route');
 check(str_contains($js, "fa fa-trash-o recycle-icon"), 'DFM button does not use the bundled Unraid icon font');
+check(str_contains($js, 'var anchor = cells[2]'), 'DFM button is not anchored in the responsive, always-visible name column');
 
 $menuLanguage = source('source/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt');
 check(str_contains($menuLanguage, 'Dynamix File Recycle Bin=文件回收站'), 'Chinese Unraid menu translation is missing');
 $install = source('source/dynamix.file.recycle/scripts/install.sh');
 $remove = source('source/dynamix.file.recycle/scripts/remove.sh');
-check(str_contains($install, 'languages/zh_CN'), 'install hook does not register the Chinese menu translation');
-check(str_contains($install, 'dynamix.file.recycle.dot'), 'install hook does not invalidate the Unraid translation cache');
+check(str_contains($install, 'languages/zh_CN/dynamix.file.recycle.txt'), 'install hook does not remove the obsolete global translation');
+check(str_contains($install, 'dynamix.file.recycle.dot'), 'install hook does not remove the obsolete translation cache');
 check(str_contains($remove, 'dynamix.file.recycle.txt'), 'remove hook leaves the global menu translation behind');
 check(str_contains($remove, 'dynamix.file.recycle.dot'), 'remove hook leaves the translation cache behind');
 

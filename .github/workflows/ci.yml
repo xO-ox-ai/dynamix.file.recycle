@@ -19,6 +19,7 @@ jobs:
           php tests/contract.test.php
           php tests/localization.test.php
           php tests/safety.test.php
+          node tests/recycle-ui.test.js
       - name: Script syntax
         run: |
           bash -n tools/build.sh source/dynamix.file.recycle/scripts/*.sh source/dynamix.file.recycle/scripts/recycle-maintain

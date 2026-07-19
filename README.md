@@ -60,9 +60,9 @@ https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.fil
 ```
 
 The Plugin Manager downloads the versioned package, verifies its SHA-256
-digest and runs the install hook. Open **Tools -> Disk Utilities -> Dynamix
-File Recycle Bin** after installation to review the master switch and
-maintenance policy.
+digest and runs the install hook. Open **Settings -> Dynamix File Recycle Bin**
+or **Tools -> Disk Utilities -> Dynamix File Recycle Bin** after installation
+to review the master switch and maintenance policy.
 
 Command-line installation uses the same official Plugin Manager path:
 

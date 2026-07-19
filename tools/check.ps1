@@ -43,6 +43,8 @@ if (!(Test-Path -LiteralPath $nodePath -PathType Leaf)) {
 }
 & $nodePath --check 'source\dynamix.file.recycle\javascript\recycle.js'
 if ($LASTEXITCODE -ne 0) { throw 'JavaScript syntax check failed.' }
+& $nodePath 'tests\recycle-ui.test.js'
+if ($LASTEXITCODE -ne 0) { throw 'DFM responsive UI contract failed.' }
 
 & $bash -n 'tools/build.sh' `
     'source/dynamix.file.recycle/scripts/install.sh' `

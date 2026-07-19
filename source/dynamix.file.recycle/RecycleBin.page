@@ -16,13 +16,22 @@ Icon="recycle"
  */
 
 require_once __DIR__ . '/include/Bootstrap.php';
-use function DynamixFileRecycle\boot;
 
-$c = boot();
-$cfg = $c->config();
-$i18n = $c->i18n();
-$fs = $c->fs();
-$history = $c->history();
+try {
+    $c = \DynamixFileRecycle\boot();
+    $cfg = $c->config();
+    $i18n = $c->i18n();
+    $history = $c->history();
+} catch (\Throwable $e) {
+    error_log('Dynamix File Recycle Bin browser bootstrap failed: ' . $e->getMessage());
+    ?>
+    <div class="notice red">
+        <span class="icon-alert"></span>
+        Recycle Bin could not load: <?= htmlspecialchars($e->getMessage(), ENT_QUOTES) ?>
+    </div>
+    <?php
+    return;
+}
 
 $csrf = '';
 if (isset($var) && is_array($var) && !empty($var['csrf_token'])) {
@@ -39,9 +48,18 @@ if ($csrf === '') {
 }
 
 $showHistory = $cfg->getHistoryEnabled();
-$rows = $showHistory ? $history->listAll(null, 1000, 0) : $history->listActive(null, 1000, 0);
-$activeCount = $history->countActive();
-$totalSize = $history->totalActiveSize();
+$rows = [];
+$activeCount = 0;
+$totalSize = 0;
+$loadError = null;
+try {
+    $rows = $showHistory ? $history->listAll(null, 1000, 0) : $history->listActive(null, 1000, 0);
+    $activeCount = $history->countActive();
+    $totalSize = $history->totalActiveSize();
+} catch (\Throwable $e) {
+    $loadError = $e->getMessage();
+    $c->logger()->error('recycle_bin_load', '', $loadError);
+}
 $apiBase = '/plugins/dynamix.file.recycle/api.php';
 
 $pick = function (string $en, string $zh) use ($i18n): string {
@@ -61,6 +79,9 @@ $stateLabel = [
 ?>
 <div class="recycle-bin">
 <h2><?= $enZh('Recycle Bin', '回收站') ?></h2>
+<?php if ($loadError !== null): ?>
+<div class="notice red"><span class="icon-alert"></span> <?= $enZh('Recycle Bin data could not be loaded: ', '回收站数据无法读取：') ?><?= htmlspecialchars($loadError, ENT_QUOTES) ?></div>
+<?php endif; ?>
 <p class="hint">
     <?= count($rows) ?> <?= $showHistory ? $enZh('historical records', '条历史记录') : $enZh('active records', '条当前记录') ?>
     &nbsp;|&nbsp;

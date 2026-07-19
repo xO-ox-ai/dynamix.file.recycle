@@ -33,20 +33,33 @@ if (!is_file($bootFile)) {
 }
 require_once $bootFile;
 
-use function DynamixFileRecycle\boot;
-
-// Load the title translation before Unraid builds its menu panels. The
-// front-end itself decides whether the current browser URL is a DFM page.
-if (function_exists('parse_plugin')) {
-    parse_plugin('dynamix.file.recycle');
+// Merge the plugin-local title catalog before Unraid builds menu panels. This
+// avoids depending on the global language-pack cache, which can be rebuilt by
+// Unraid independently of third-party plugin installation.
+$localeCode = strtolower((string) ($_SESSION['locale'] ?? ($GLOBALS['locale'] ?? 'en_US')));
+if (str_starts_with($localeCode, 'zh')) {
+    $catalog = @parse_ini_file(
+        __DIR__ . '/unraid-language/zh_CN/dynamix.file.recycle.txt',
+        false,
+        INI_SCANNER_RAW
+    );
+    if (is_array($catalog)) {
+        $baseLanguage = $GLOBALS['language'] ?? [];
+        $GLOBALS['language'] = array_merge(is_array($baseLanguage) ? $baseLanguage : [], $catalog);
+    }
 }
 
-$c = boot();
-$cfg = $c->config();
-if (!$cfg->getEnabled()) {
+try {
+    $c = \DynamixFileRecycle\boot();
+    $cfg = $c->config();
+    $i18n = $c->i18n();
+} catch (\Throwable $e) {
+    error_log('Dynamix File Recycle Bin injection bootstrap failed: ' . $e->getMessage());
     return;
 }
-$i18n = $c->i18n();
+$enabled = $cfg->getEnabled();
+$versionFile = __DIR__ . '/VERSION';
+$version = is_file($versionFile) ? trim((string) file_get_contents($versionFile)) : 'unknown';
 
 // Read CSRF token from Unraid state. Prefer $var (already-loaded dynamix
 // globals), fall back to parsing var.ini ourselves.
@@ -68,7 +81,8 @@ $runtime = [
     'csrfToken'  => $csrf,
     'apiBase'    => $pluginRoot . '/api.php',
     'lang'       => $i18n->lang(),
-    'enabled'    => true,
+    'enabled'    => $enabled,
+    'version'    => $version,
     'history'    => $cfg->getHistoryEnabled(),
     'i18n' => [
         'btnTitle'         => $i18n->t('btn.title'),
@@ -100,6 +114,15 @@ $runtime = [
         ],
     ],
 ];
+
+$requestUri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+if (preg_match('#(?:^|/)Browse(?:[/?]|$)#', $requestUri) === 1) {
+    $c->logger()->info(
+        'ui_inject',
+        '',
+        sprintf('Browse assets emitted version=%s enabled=%d uri=%s', $version, $enabled ? 1 : 0, $requestUri)
+    );
+}
 
 $runtimeJson = json_encode(
     $runtime,

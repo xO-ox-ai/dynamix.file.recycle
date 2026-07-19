@@ -55,7 +55,8 @@ https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.fil
 ```
 
 插件管理器会下载带版本号的安装包、验证 SHA-256，然后执行安装钩子。安装完成后，
-请打开 **工具 -> Disk Utilities -> 文件回收站** 检查总开关和维护策略。
+请打开 **设置 -> 文件回收站**，也可以打开 **工具 -> Disk Utilities ->
+文件回收站**，检查总开关和维护策略。
 
 命令行安装使用同一个官方插件管理器：
 

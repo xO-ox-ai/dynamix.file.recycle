@@ -9,6 +9,21 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19d] - 2026-07-19
+
+### Fixed
+- Restored the settings tile while keeping the same management page available
+  under **Tools -> Disk Utilities**.
+- Corrected the Plugin Manager launch value from protocol-relative
+  `//Tools/DynamixFileRecycle` to `/Tools/DynamixFileRecycle` and declared the
+  native recycle icon.
+- Replaced the global translation-cache dependency with a guarded plugin-local
+  catalog merge so menu titles follow the active Unraid session language.
+- Moved each DFM recycle control into the always-visible name column; narrower
+  layouts no longer hide it with DFM's responsive action columns.
+- Added visible page-load errors, persistent UI-injection diagnostics and
+  browser-console markers instead of failing as an unexplained black page.
+
 ## [2026.07.19c] - 2026-07-19
 
 ### Fixed

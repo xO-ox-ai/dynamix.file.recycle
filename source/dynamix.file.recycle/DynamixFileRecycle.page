@@ -1,4 +1,4 @@
-Menu="DiskUtilities"
+Menu="OtherSettings:30 DiskUtilities:30"
 Title="Dynamix File Recycle Bin"
 Icon="recycle"
 Tag="recycle"
@@ -7,7 +7,8 @@ Tag="recycle"
 /**
  * DynamixFileRecycle.page — the Settings page for the plugin.
  *
- * Renders under Tools -> Disk Utilities and follows the Unraid session locale.
+ * Renders under Settings and Tools -> Disk Utilities, and follows the active
+ * Unraid WebGUI locale.
  *
  * On POST Unraid's auto_prepend performs CSRF verification before this page;
  * the same Security sanitizer used by api.php validates the patch before the
@@ -15,12 +16,30 @@ Tag="recycle"
  */
 
 require_once __DIR__ . '/include/Bootstrap.php';
-use function DynamixFileRecycle\boot;
 
-$c = boot();
-$cfg = $c->config();
-$i18n = $c->i18n();
-$supportedVolumes = $c->fs()->supportedVolumes();
+try {
+    $c = \DynamixFileRecycle\boot();
+    $cfg = $c->config();
+    $i18n = $c->i18n();
+} catch (\Throwable $e) {
+    error_log('Dynamix File Recycle Bin settings bootstrap failed: ' . $e->getMessage());
+    ?>
+    <div class="notice red">
+        <span class="icon-alert"></span>
+        Dynamix File Recycle Bin could not load: <?= htmlspecialchars($e->getMessage(), ENT_QUOTES) ?>
+    </div>
+    <?php
+    return;
+}
+
+$supportedVolumes = [];
+$loadError = null;
+try {
+    $supportedVolumes = $c->fs()->supportedVolumes();
+} catch (\Throwable $e) {
+    $loadError = $e->getMessage();
+    $c->logger()->error('settings_load', '', $loadError);
+}
 
 $saved = false;
 $error = null;
@@ -91,8 +110,15 @@ $enZh = function (string $en, string $zh) use ($i18n): string {
     return htmlspecialchars($i18n->lang() === 'zh_CN' ? $zh : $en, ENT_QUOTES);
 };
 
-$totalItems = $c->history()->countActive();
-$totalSize  = $c->history()->totalActiveSize();
+$totalItems = 0;
+$totalSize = 0;
+try {
+    $totalItems = $c->history()->countActive();
+    $totalSize = $c->history()->totalActiveSize();
+} catch (\Throwable $e) {
+    $loadError = $loadError ?? $e->getMessage();
+    $c->logger()->error('settings_status', '', $e->getMessage());
+}
 $allowedVolumes = $cfg->getAllowedVolumes();
 ?>
 <div class="recycle-settings">
@@ -101,6 +127,9 @@ $allowedVolumes = $cfg->getAllowedVolumes();
 <?php endif; ?>
 <?php if ($error !== null): ?>
 <div class="notice red"><span class="icon-alert"></span> <?= htmlspecialchars($error, ENT_QUOTES) ?></div>
+<?php endif; ?>
+<?php if ($loadError !== null): ?>
+<div class="notice red"><span class="icon-alert"></span> <?= $enZh('Some storage information could not be loaded: ', '部分存储信息无法读取：') ?><?= htmlspecialchars($loadError, ENT_QUOTES) ?></div>
 <?php endif; ?>
 
 <p class="hint">

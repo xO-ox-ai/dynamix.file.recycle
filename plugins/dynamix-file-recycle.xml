@@ -10,6 +10,6 @@
   <Category>Tools:Utilities</Category>
   <Beta>true</Beta>
   <MinVer>7.3.2</MinVer>
-  <Icon>https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.png</Icon>
+  <Icon>https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.svg</Icon>
   <License>MIT</License>
 </Plugin>

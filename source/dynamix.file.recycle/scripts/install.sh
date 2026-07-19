@@ -10,7 +10,6 @@ STATE_DIR="/usr/local/emhttp/state/plugins/dynamix.file.recycle"
 LOG_DIR="$STATE_DIR/logs"
 AUDIT_DIR="$CFG_DIR/logs"
 RUN_DIR="/run/dynamix.file.recycle"
-LANG_DIR="/usr/local/emhttp/languages/zh_CN"
 
 # 1. Persistent config dir (under /boot so it survives reboot).
 mkdir -p "$CFG_DIR"
@@ -22,13 +21,11 @@ fi
 # 2. Volatile cache/runtime plus bounded persistent audit directory.
 install -d -m 0700 "$STATE_DIR" "$LOG_DIR" "$RUN_DIR" "$AUDIT_DIR"
 
-# 3. Install the WebGUI menu translation and invalidate Unraid's compiled
-#    translation cache so an upgrade is visible without a reboot.
-install -d -m 0755 "$LANG_DIR"
-install -m 0644 \
-  "$PLUGIN_DIR/unraid-language/zh_CN/dynamix.file.recycle.txt" \
-  "$LANG_DIR/dynamix.file.recycle.txt"
-rm -f "$LANG_DIR/dynamix.file.recycle.dot"
+# 3. Remove translations copied globally by 2026.07.19c. The current build
+#    loads its catalog from the plugin directory and cannot be invalidated by
+#    an Unraid language-pack cache refresh.
+rm -f /usr/local/emhttp/languages/zh_CN/dynamix.file.recycle.txt
+rm -f /usr/local/emhttp/languages/zh_CN/dynamix.file.recycle.dot
 
 # 4. Initialise runtime state and reconcile any currently available shards.
 if [[ -x /usr/local/bin/php ]]; then
@@ -50,4 +47,5 @@ if [[ -x /usr/local/bin/php ]]; then
 fi
 
 echo "Dynamix File Recycle Bin installed."
-echo "  Open Tools -> Disk Utilities -> Dynamix File Recycle Bin."
+echo "  Open Settings -> Dynamix File Recycle Bin, or"
+echo "  Tools -> Disk Utilities -> Dynamix File Recycle Bin."

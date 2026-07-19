@@ -1,0 +1,14 @@
+# /etc/logrotate.d/dynamix.file.recycle
+# Daily rotation, keep 7 archives. The plugin's own Logger also does a soft
+# size-based rotation; this entry complements that for the system logrotate
+# users.
+
+/usr/local/emhttp/state/plugins/dynamix.file.recycle/*.log {
+    daily
+    rotate 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

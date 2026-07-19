@@ -1,0 +1,7 @@
+#!/bin/bash
+# /etc/cron.hourly/dynamix.file.recycle
+# Installed by the .plg install hook. Triggers maintenance every hour; the
+# PHP side throttles itself via the `interval_hours` config so we don't
+# actually run the full sweep more often than configured.
+set -uo pipefail
+exec /usr/local/emhttp/plugins/dynamix.file.recycle/scripts/recycle-maintain

@@ -1,0 +1,25 @@
+; Dynamix File Recycle Bin — English language file.
+; Flat key=value format. Dotted keys are LITERAL identifiers (the loader does
+; NOT treat [bracketed] sections as a namespace). Lines starting with ; or #
+; are comments. Missing keys fall back to en_US automatically.
+
+btn.title          = "Move to Recycle Bin"
+btn.title.blocked  = "Out of scope: only /mnt/disk* and ZFS datasets are supported"
+btn.title.error    = "Last action failed; click to retry"
+
+state.idle       = "Ready"
+state.checking   = "Checking..."
+state.running    = "Working..."
+state.blocked    = "Not supported here"
+state.error      = "Error"
+state.done       = "Done"
+
+confirm.recycle  = "Move this item to the Recycle Bin?"
+
+done.message     = "Item moved to Recycle Bin."
+error.message    = "Operation failed."
+
+settings.title        = "Dynamix File Recycle Bin"
+settings.tab.main     = "General"
+settings.tab.maint    = "Maintenance"
+settings.tab.security = "Security"

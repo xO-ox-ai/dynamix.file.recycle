@@ -1,0 +1,257 @@
+Menu="OtherSettings:30"
+Title="Dynamix File Recycle Bin / 文件回收站"
+Icon="icon-u-recycle"
+---
+<?php
+/**
+ * settings.page — the Settings page for the plugin.
+ *
+ * Renders under Settings -> Dynamix File Recycle Bin. Bilingual labels:
+ * every label shows both English and 中文 inline so the page is readable in
+ * any system language.
+ *
+ * On POST we save via api.php?action=config_save (which itself goes through
+ * Unraid's auto_prepend CSRF verification), then redirect back with a
+ * confirmation. We never touch /boot directly from this page.
+ */
+
+require_once __DIR__ . '/include/Bootstrap.php';
+use function DynamixFileRecycle\boot;
+use DynamixFileRecycle\STATE_DIR;
+
+$c = boot();
+$cfg = $c->config();
+$i18n = $c->i18n();
+
+$saved = false;
+$error = null;
+
+// Unraid populates $var (from var.ini) for any .page rendered via the
+// DefaultPageLayout. We use it to send the CSRF token back into our form.
+$csrf = '';
+if (isset($var) && is_array($var) && !empty($var['csrf_token'])) {
+    $csrf = (string) $var['csrf_token'];
+}
+if ($csrf === '') {
+    $varIni = '/usr/local/emhttp/state/var.ini';
+    if (is_file($varIni)) {
+        $parsed = @parse_ini_string((string) file_get_contents($varIni));
+        if (is_array($parsed) && !empty($parsed['csrf_token'])) {
+            $csrf = (string) $parsed['csrf_token'];
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    try {
+        // Build the patch from flat POST keys, then save through Config.
+        $raw = [
+            'global' => [
+                'enabled'            => isset($_POST['enabled']) ? '1' : '0',
+                'language'           => $_POST['language'] ?? 'auto',
+                'log_level'          => $_POST['log_level'] ?? 'INFO',
+                'log_retention_days' => $_POST['log_retention_days'] ?? '30',
+                'log_max_size_mib'   => $_POST['log_max_size_mib'] ?? '5',
+            ],
+            'history' => [
+                'enabled'        => isset($_POST['history_enabled']) ? '1' : '0',
+                'retention_days' => $_POST['history_retention_days'] ?? '365',
+            ],
+            'maintenance' => [
+                'interval_hours'      => $_POST['interval_hours'] ?? '1',
+                'age_days'            => $_POST['age_days'] ?? '30',
+                'capacity_mode'       => $_POST['capacity_mode'] ?? 'percent',
+                'capacity_percent'    => $_POST['capacity_percent'] ?? '10',
+                'capacity_absolute_gb'=> $_POST['capacity_absolute_gb'] ?? '0',
+                'auto_empty_cron'     => trim($_POST['auto_empty_cron'] ?? ''),
+                'vacuum_sqlite'       => isset($_POST['vacuum_sqlite']) ? '1' : '0',
+            ],
+            'security' => [
+                'preserve_metadata'      => isset($_POST['preserve_metadata']) ? '1' : '0',
+                'allow_user_self_service'=> isset($_POST['allow_user_self_service']) ? '1' : '0',
+            ],
+        ];
+        $patch = $c->security()->sanitizeConfigPatch($raw);
+        $cfg->mergeAndSave($patch);
+        $saved = true;
+    } catch (\Throwable $e) {
+        $error = $e->getMessage();
+    }
+}
+
+// Pull the current values to populate the form.
+$v = function (string $section, string $key, $default = '') use ($cfg) {
+    $raw = $cfg->raw();
+    return $raw[$section][$key] ?? $default;
+};
+
+$enZh = function (string $en, string $zh): string {
+    return htmlspecialchars($en . ' / ' . $zh, ENT_QUOTES);
+};
+
+$totalItems = $c->history()->countActive();
+$totalSize  = $c->history()->totalActiveSize();
+?>
+<div class="recycle-settings">
+<?php if ($saved): ?>
+<div class="notice green"><span class="icon-ok"></span> Saved / 已保存</div>
+<?php endif; ?>
+<?php if ($error !== null): ?>
+<div class="notice red"><span class="icon-alert"></span> <?= htmlspecialchars($error, ENT_QUOTES) ?></div>
+<?php endif; ?>
+
+<p class="hint">
+    Move files to a per-volume <code>.RecycleBin</code> directory instead of
+    deleting them permanently. v1 supports <code>/mnt/disk*</code> and ZFS
+    datasets. &nbsp;|&nbsp;
+    将文件移入对应卷的 <code>.RecycleBin</code> 目录而非永久删除。v1 支持
+    <code>/mnt/disk*</code> 数据盘和 ZFS dataset。
+</p>
+
+<form method="post" action="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? '', ENT_QUOTES) ?>" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
+    <table class="settings">
+        <tr>
+            <td><label for="enabled"><b><?= $enZh('Enable plugin', '启用插件') ?></b></label></td>
+            <td>
+                <input class="switch" type="checkbox" id="enabled" name="enabled"
+                    <?= $cfg->getEnabled() ? 'checked' : '' ?>>
+                <span class="hint"><?= $enZh(
+                    'Master switch. When off, the button is hidden and the cron is a no-op.',
+                    '总开关。关闭时按钮隐藏，定时任务为空操作。'
+                ) ?></span>
+            </td>
+        </tr>
+
+        <tr>
+            <td><label for="language"><b><?= $enZh('Language', '语言') ?></b></label></td>
+            <td>
+                <select id="language" name="language">
+                    <?php foreach (['auto', 'en_US', 'zh_CN'] as $opt): ?>
+                        <option value="<?= $opt ?>" <?= $cfg->getLanguage() === $opt ? 'selected' : '' ?>>
+                            <?= $opt === 'auto' ? 'Auto (system) / 跟随系统' : $opt ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </td>
+        </tr>
+
+        <tr class="section"><td colspan="2"><?= $enZh('Logging', '日志') ?></td></tr>
+        <tr>
+            <td><label for="log_level"><?= $enZh('Log level', '日志级别') ?></label></td>
+            <td>
+                <select id="log_level" name="log_level">
+                    <?php foreach (['ERROR', 'WARN', 'INFO', 'DEBUG'] as $lv): ?>
+                        <option value="<?= $lv ?>" <?= $cfg->getLogLevel() === $lv ? 'selected' : '' ?>><?= $lv ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="log_retention_days"><?= $enZh('Log retention (days)', '日志保留（天）') ?></label></td>
+            <td><input type="number" id="log_retention_days" name="log_retention_days" min="0" value="<?= (int) $v('global', 'log_retention_days', 30) ?>"> <span class="hint">0 = keep forever / 0 = 永久保留</span></td>
+        </tr>
+        <tr>
+            <td><label for="log_max_size_mib"><?= $enZh('Log size cap (MiB)', '日志大小上限（MiB）') ?></label></td>
+            <td><input type="number" id="log_max_size_mib" name="log_max_size_mib" min="1" value="<?= (int) $v('global', 'log_max_size_mib', 5) ?>"></td>
+        </tr>
+
+        <tr class="section"><td colspan="2"><?= $enZh('History', '历史记录') ?></td></tr>
+        <tr>
+            <td><label for="history_enabled"><?= $enZh('Record history', '记录历史') ?></label></td>
+            <td>
+                <input class="switch" type="checkbox" id="history_enabled" name="history_enabled"
+                    <?= $cfg->getHistoryEnabled() ? 'checked' : '' ?>>
+                <span class="hint"><?= $enZh(
+                    'Keeps rows even after purge/restore so you can audit deletions.',
+                    '即使被清理/还原后也保留记录，便于审计。'
+                ) ?></span>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="history_retention_days"><?= $enZh('History retention (days)', '历史保留（天）') ?></label></td>
+            <td><input type="number" id="history_retention_days" name="history_retention_days" min="0" value="<?= (int) $v('history', 'retention_days', 365) ?>"></td>
+        </tr>
+
+        <tr class="section"><td colspan="2"><?= $enZh('Maintenance', '维护策略') ?></td></tr>
+        <tr>
+            <td><label for="interval_hours"><?= $enZh('Run interval (hours)', '运行间隔（小时）') ?></label></td>
+            <td><input type="number" id="interval_hours" name="interval_hours" min="1" value="<?= $cfg->getMaintenanceIntervalHours() ?>"></td>
+        </tr>
+        <tr>
+            <td><label for="age_days"><?= $enZh('Age eviction (days)', '年龄淘汰（天）') ?></label></td>
+            <td><input type="number" id="age_days" name="age_days" min="0" value="<?= $cfg->getAgeDays() ?>"> <span class="hint">0 = disabled / 0 = 禁用</span></td>
+        </tr>
+        <tr>
+            <td><label for="capacity_mode"><?= $enZh('Capacity mode', '容量模式') ?></label></td>
+            <td>
+                <select id="capacity_mode" name="capacity_mode">
+                    <option value="percent"  <?= $cfg->getCapacityMode() === 'percent' ? 'selected' : '' ?>>percent / 百分比</option>
+                    <option value="absolute" <?= $cfg->getCapacityMode() === 'absolute' ? 'selected' : '' ?>>absolute (GiB) / 绝对大小</option>
+                </select>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="capacity_percent"><?= $enZh('Capacity percent (%)', '容量百分比（%）') ?></label></td>
+            <td><input type="number" id="capacity_percent" name="capacity_percent" min="0" max="100" value="<?= $cfg->getCapacityPercent() ?>"></td>
+        </tr>
+        <tr>
+            <td><label for="capacity_absolute_gb"><?= $enZh('Capacity absolute (GiB)', '容量绝对值（GiB）') ?></label></td>
+            <td><input type="number" id="capacity_absolute_gb" name="capacity_absolute_gb" min="0" value="<?= $cfg->getCapacityAbsoluteGb() ?>"></td>
+        </tr>
+        <tr>
+            <td><label for="auto_empty_cron"><?= $enZh('Auto-empty schedule (cron)', '自动清空时间（cron）') ?></label></td>
+            <td>
+                <input type="text" id="auto_empty_cron" name="auto_empty_cron" value="<?= htmlspecialchars($cfg->getAutoEmptyCron(), ENT_QUOTES) ?>" placeholder="0 3 * * 0">
+                <span class="hint">e.g. "0 3 * * 0" = every Sunday 03:00. Empty = disabled / 例："0 3 * * 0" = 每周日 03:00。空 = 禁用</span>
+            </td>
+        </tr>
+        <tr>
+            <td><label for="vacuum_sqlite"><?= $enZh('Vacuum SQLite', '压缩 SQLite') ?></label></td>
+            <td><input class="switch" type="checkbox" id="vacuum_sqlite" name="vacuum_sqlite" <?= $cfg->getVacuumSqlite() ? 'checked' : '' ?>></td>
+        </tr>
+
+        <tr class="section"><td colspan="2"><?= $enZh('Security', '安全') ?></td></tr>
+        <tr>
+            <td><label for="preserve_metadata"><?= $enZh('Preserve metadata', '保留元数据') ?></label></td>
+            <td><input class="switch" type="checkbox" id="preserve_metadata" name="preserve_metadata" <?= $cfg->getPreserveMetadata() ? 'checked' : '' ?>></td>
+        </tr>
+        <tr>
+            <td><label for="allow_user_self_service"><?= $enZh('Allow non-admin self-service', '允许非管理员自助') ?></label></td>
+            <td>
+                <input class="switch" type="checkbox" id="allow_user_self_service" name="allow_user_self_service" <?= $cfg->getAllowUserSelfService() ? 'checked' : '' ?>>
+                <span class="hint"><?= $enZh('Experimental. Off = admin-only.', '实验性。关闭 = 仅管理员。') ?></span>
+            </td>
+        </tr>
+
+        <tr class="section"><td colspan="2"><?= $enZh('Status', '状态') ?></td></tr>
+        <tr>
+            <td><?= $enZh('Active items', '当前条目') ?></td>
+            <td><?= $totalItems ?> (<?= number_format($totalSize) ?> bytes)</td>
+        </tr>
+        <tr>
+            <td><?= $enZh('Log file', '日志文件') ?></td>
+            <td><code><?= htmlspecialchars(\DynamixFileRecycle\LOG_FILE, ENT_QUOTES) ?></code></td>
+        </tr>
+        <tr>
+            <td><?= $enZh('SQLite', 'SQLite 数据库') ?></td>
+            <td><code><?= htmlspecialchars(\DynamixFileRecycle\DB_FILE, ENT_QUOTES) ?></code></td>
+        </tr>
+
+        <tr>
+            <td colspan="2">
+                <button type="submit" class="btn-primary"><?= $enZh('Save', '保存') ?></button>
+                <a class="btn" href="/Tools/RecycleBin"><?= $enZh('Open Recycle Bin', '打开回收站') ?></a>
+            </td>
+        </tr>
+    </table>
+</form>
+</div>
+<style>
+.recycle-settings .section td{ background: var(--table-header-bg, #2a2a2a); font-weight: bold; }
+.recycle-settings table.settings{ width: 100%; }
+.recycle-settings table.settings td{ padding: 8px 12px; vertical-align: middle; border-bottom: 1px solid var(--table-row-line, #333); }
+.recycle-settings table.settings td:first-child{ width: 38%; }
+.recycle-settings .hint{ color: var(--hint-text, #888); font-size: 12px; display: block; margin-top: 4px; }
+.recycle-settings code{ background: rgba(127,127,127,.15); padding: 1px 4px; border-radius: 3px; }
+</style>

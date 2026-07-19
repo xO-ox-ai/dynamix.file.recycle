@@ -1,0 +1,59 @@
+Menu="Tools:80"
+Title="About / 关于"
+Icon="icon-u-recycle"
+---
+<?php
+/**
+ * README.page — Tools -> About page with bilingual docs.
+ *
+ * Pure documentation; no POST handling.
+ */
+$version = '1.0.0';
+?>
+<div class="recycle-about">
+<h2>Dynamix File Recycle Bin / 文件回收站</h2>
+<p>
+    <b>Version / 版本:</b> <?= htmlspecialchars($version, ENT_QUOTES) ?>
+</p>
+
+<h3>EN — What it does</h3>
+<ul>
+    <li>Adds a "Move to Recycle Bin" button to every row in the Dynamix File Manager (Browse page).</li>
+    <li>Files and folders are moved to a per-volume <code>.RecycleBin</code> directory instead of being deleted.</li>
+    <li>v1 supports <code>/mnt/disk*</code> data drives and ZFS datasets. <code>/mnt/user</code> and <code>/mnt/cache*</code> are intentionally out of scope.</li>
+    <li>Open <b>Settings → Dynamix File Recycle Bin</b> to enable, configure maintenance, log level, history recording, and language.</li>
+    <li>Open <b>Tools → Recycle Bin</b> to browse, restore, or permanently purge items.</li>
+</ul>
+
+<h3>中文 — 功能说明</h3>
+<ul>
+    <li>在 Dynamix File Manager（Browse 页面）的每一行上添加"移入回收站"按钮。</li>
+    <li>文件与文件夹会被移动到对应卷的 <code>.RecycleBin</code> 目录，而不是被永久删除。</li>
+    <li>v1 支持 <code>/mnt/disk*</code> 数据盘和 ZFS dataset。<code>/mnt/user</code> 与 <code>/mnt/cache*</code> 暂不支持。</li>
+    <li>打开 <b>Settings → Dynamix File Recycle Bin</b> 启用插件并配置维护、日志级别、历史记录和语言。</li>
+    <li>打开 <b>Tools → Recycle Bin</b> 浏览、还原或永久删除回收站内容。</li>
+</ul>
+
+<h3>Recycle bin location / 回收站位置</h3>
+<table class="settings">
+    <tr><th>Source path / 原路径</th><th>Recycle location / 回收站位置</th></tr>
+    <tr><td><code>/mnt/disk1/Movies/x.mkv</code></td><td><code>/mnt/disk1/.RecycleBin/Movies/x.mkv</code></td></tr>
+    <tr><td><code>/mnt/tank/photos/2025/a.jpg</code></td><td><code>/mnt/tank/.RecycleBin/photos/2025/a.jpg</code></td></tr>
+</table>
+
+<h3>Security / 安全</h3>
+<p>
+    All write operations require an admin session. Paths are normalised and
+    confined to their original volume. CSRF is verified by Unraid's own
+    <code>auto_prepend</code>; the plugin never re-implements it.
+    &nbsp;|&nbsp;
+    所有写操作均要求管理员登录；路径会被规范化并限制在原卷内；CSRF 由 Unraid 官方
+    <code>auto_prepend</code> 校验，插件不重复实现。
+</p>
+</div>
+<style>
+.recycle-about{ padding: 12px; }
+.recycle-about table.settings{ width: 100%; border-collapse: collapse; margin: 8px 0; }
+.recycle-about table.settings th, .recycle-about table.settings td{ padding: 6px 10px; border-bottom: 1px solid var(--table-row-line, #333); text-align: left; }
+.recycle-about code{ background: rgba(127,127,127,.15); padding: 1px 4px; border-radius: 3px; }
+</style>

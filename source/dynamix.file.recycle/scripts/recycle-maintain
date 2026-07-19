@@ -1,0 +1,26 @@
+#!/bin/bash
+# scripts/recycle-maintain — invoked by /etc/cron.hourly/dynamix.file.recycle.
+#
+# Thin wrapper that hands off to the PHP Bootstrap CLI. Keeps the cron entry
+# minimal and avoids re-implementing maintenance logic in bash.
+set -uo pipefail
+
+# Prefer the per-unraid PHP binary; fall back to whatever is on PATH.
+PHP_BIN="${PHP_BIN:-/usr/local/bin/php}"
+if [ ! -x "$PHP_BIN" ]; then
+    PHP_BIN="$(command -v php || true)"
+fi
+if [ -z "$PHP_BIN" ]; then
+    echo "dynamix.file.recycle: php interpreter not found, aborting" >&2
+    exit 0   # do not fail cron
+fi
+
+PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
+BOOT="$PLUGIN_DIR/include/Bootstrap.php"
+if [ ! -f "$BOOT" ]; then
+    echo "dynamix.file.recycle: $BOOT not found (plugin removed?)" >&2
+    exit 0
+fi
+
+# Run maintenance. Bootstrap prints a short summary line; we let it through.
+exec "$PHP_BIN" "$BOOT" maintain

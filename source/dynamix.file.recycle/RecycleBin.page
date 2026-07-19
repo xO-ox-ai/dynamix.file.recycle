@@ -1,0 +1,185 @@
+Menu="Tools:70"
+Title="Recycle Bin / 回收站"
+Icon="icon-u-recycle"
+---
+<?php
+/**
+ * RecycleBin.page — Tools -> Recycle Bin browser.
+ *
+ * Lists the contents of every per-volume .RecycleBin (via api.php?action=list)
+ * and, when history is enabled, additionally shows restored/purged rows with a
+ * state badge to distinguish them.
+ *
+ * This page is rendered server-side; it talks to api.php over a normal
+ * same-origin fetch with CSRF token in the body. The page itself does NOT
+ * perform CSRF checks — only the POST mutations do, and those go through
+ * api.php.
+ */
+
+require_once __DIR__ . '/include/Bootstrap.php';
+use function DynamixFileRecycle\boot;
+
+$c = boot();
+$cfg = $c->config();
+$i18n = $c->i18n();
+$fs = $c->fs();
+$history = $c->history();
+
+$csrf = '';
+if (isset($var) && is_array($var) && !empty($var['csrf_token'])) {
+    $csrf = (string) $var['csrf_token'];
+}
+if ($csrf === '') {
+    $varIni = '/usr/local/emhttp/state/var.ini';
+    if (is_file($varIni)) {
+        $parsed = @parse_ini_string((string) file_get_contents($varIni));
+        if (is_array($parsed) && !empty($parsed['csrf_token'])) {
+            $csrf = (string) $parsed['csrf_token'];
+        }
+    }
+}
+
+$showHistory = $cfg->getHistoryEnabled();
+$rows = $showHistory ? $history->listAll(null, 1000, 0) : $history->listActive(null, 1000, 0);
+$activeCount = $history->countActive();
+$totalSize = $history->totalActiveSize();
+$apiBase = '/plugins/dynamix.file.recycle/api.php';
+
+$stateLabel = [
+    'active'   => 'Active / 当前',
+    'restored' => 'Restored / 已还原',
+    'purged'   => 'Purged / 已清理',
+];
+?>
+<div class="recycle-bin">
+<h2>Recycle Bin / 回收站</h2>
+<p class="hint">
+    <?= count($rows) ?> <?= $showHistory ? 'historical' : 'active' ?> records
+    &nbsp;|&nbsp;
+    <?= $activeCount ?> active items, <?= number_format($totalSize) ?> bytes
+    &nbsp;|&nbsp;
+    <?= $showHistory ? 'history on' : 'history off' ?>
+</p>
+
+<form id="recycle-batch-form" method="post" action="<?= htmlspecialchars($apiBase, ENT_QUOTES) ?>">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
+    <table class="settings" id="recycle-table">
+        <thead>
+        <tr>
+            <th class="col-check"><input type="checkbox" id="recycle-select-all"></th>
+            <th>State / 状态</th>
+            <th>Name / 名称</th>
+            <th>Original path / 原始路径</th>
+            <th>Volume / 卷</th>
+            <th>Size / 大小</th>
+            <th>Deleted at / 删除时间</th>
+            <th>Actions / 操作</th>
+        </tr>
+        </thead>
+        <tbody>
+        <?php if (!$rows): ?>
+        <tr><td colspan="8" class="empty"><?= $cfg->getHistoryEnabled() ? 'No records / 暂无记录' : 'Recycle bin is empty / 回收站为空' ?></td></tr>
+        <?php else: foreach ($rows as $row): ?>
+            <?php
+                $name = basename($row['original_path']);
+                $recycleExists = is_string($row['recycle_path']) && @file_exists($row['recycle_path']);
+                $canAct = $row['state'] === 'active';
+            ?>
+            <tr data-id="<?= (int) $row['id'] ?>" data-state="<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>">
+                <td class="col-check"><input type="checkbox" class="recycle-row-check" value="<?= (int) $row['id'] ?>" <?= $canAct ? '' : 'disabled' ?>></td>
+                <td><span class="badge state-<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>"><?= htmlspecialchars($stateLabel[$row['state']] ?? $row['state'], ENT_QUOTES) ?></span></td>
+                <td title="<?= htmlspecialchars($row['recycle_path'], ENT_QUOTES) ?>">
+                    <?= htmlspecialchars($name, ENT_QUOTES) ?>
+                    <?php if ((int) $row['is_dir'] === 1): ?><span class="hint">(dir/目录)</span><?php endif; ?>
+                </td>
+                <td><code><?= htmlspecialchars($row['original_path'], ENT_QUOTES) ?></code></td>
+                <td><code><?= htmlspecialchars($row['volume'], ENT_QUOTES) ?></code></td>
+                <td><?= number_format((int) $row['size']) ?></td>
+                <td><?= htmlspecialchars(date('Y-m-d H:i:s', (int) $row['deleted_at']), ENT_QUOTES) ?></td>
+                <td class="col-actions">
+                    <?php if ($canAct && $recycleExists): ?>
+                    <button type="button" class="btn btn-restore" data-id="<?= (int) $row['id'] ?>">Restore / 还原</button>
+                    <button type="button" class="btn btn-purge"  data-id="<?= (int) $row['id'] ?>">Purge / 永久删除</button>
+                    <?php elseif (!$recycleExists && $canAct): ?>
+                    <span class="hint">missing / 缺失</span>
+                    <?php else: ?>
+                    <span class="hint"><?= htmlspecialchars($row['purged_reason'] ?? '', ENT_QUOTES) ?></span>
+                    <?php endif; ?>
+                </td>
+            </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+    </table>
+</form>
+
+<p class="hint">
+    Note: this page lists only entries tracked in the SQLite history. Files
+    dropped into <code>.RecycleBin</code> by hand are not shown here. &nbsp;|&nbsp;
+    说明：此页面只显示 SQLite 历史中的条目。手动放入 <code>.RecycleBin</code> 的文件不会显示。
+</p>
+</div>
+
+<style>
+.recycle-bin table.settings{ width: 100%; border-collapse: collapse; }
+.recycle-bin table.settings th, .recycle-bin table.settings td{ padding: 6px 10px; border-bottom: 1px solid var(--table-row-line, #333); text-align: left; vertical-align: middle; }
+.recycle-bin table.settings th{ background: var(--table-header-bg, #2a2a2a); }
+.recycle-bin .col-check{ width: 28px; text-align: center; }
+.recycle-bin .col-actions{ white-space: nowrap; }
+.recycle-bin .badge{ padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+.recycle-bin .state-active{ background: #2d6a2d; color: #fff; }
+.recycle-bin .state-restored{ background: #1f6feb; color: #fff; }
+.recycle-bin .state-purged{ background: #444; color: #ccc; }
+.recycle-bin .hint{ color: var(--hint-text, #888); font-size: 12px; }
+.recycle-bin code{ background: rgba(127,127,127,.15); padding: 1px 4px; border-radius: 3px; }
+.recycle-bin .empty{ text-align: center; padding: 24px; color: var(--hint-text, #888); }
+</style>
+
+<script>
+(function () {
+    var API = <?= json_encode($apiBase, JSON_UNESCAPED_SLASHES) ?>;
+    var CSRF = <?= json_encode($csrf, JSON_UNESCAPED_SLASHES) ?>;
+
+    function post(action, payload) {
+        var body = new URLSearchParams();
+        body.append('action', action);
+        for (var k in payload) body.append(k, payload[k]);
+        if (CSRF) body.append('csrf_token', CSRF);
+        return fetch(API, {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+            body: body.toString()
+        }).then(function (r) { return r.json(); });
+    }
+
+    function refresh() { window.location.reload(); }
+
+    document.addEventListener('click', function (e) {
+        var restoreBtn = e.target.closest && e.target.closest('.btn-restore');
+        var purgeBtn   = e.target.closest && e.target.closest('.btn-purge');
+        if (restoreBtn) {
+            e.preventDefault();
+            var id = restoreBtn.getAttribute('data-id');
+            if (!confirm('Restore this item? / 还原此项？')) return;
+            post('restore', { id: id }).then(refresh).catch(function (err) { alert(err); });
+        } else if (purgeBtn) {
+            e.preventDefault();
+            var id = purgeBtn.getAttribute('data-id');
+            if (!confirm('Permanently delete? This cannot be undone. / 永久删除？此操作不可撤销。')) return;
+            post('purge', { id: id }).then(refresh).catch(function (err) { alert(err); });
+        }
+    });
+
+    // Select-all checkbox.
+    var selectAll = document.getElementById('recycle-select-all');
+    if (selectAll) {
+        selectAll.addEventListener('change', function () {
+            var boxes = document.querySelectorAll('.recycle-row-check');
+            for (var i = 0; i < boxes.length; i++) {
+                if (!boxes[i].disabled) boxes[i].checked = selectAll.checked;
+            }
+        });
+    }
+})();
+</script>

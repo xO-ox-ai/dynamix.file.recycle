@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Dynamix File Recycle Bin — plugin icon.
+  Used by:
+    - Community Applications (plugins.json -> icon/logo)
+    - Unraid menu (the page Menu field references icon-u-recycle which is
+      already provided by Dynamix; this PNG is a fallback / external icon).
+  Source SVG kept in the repo so the PNG can be regenerated at any resolution.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#ff8a3d"/>
+      <stop offset="100%" stop-color="#f15a24"/>
+    </linearGradient>
+  </defs>
+  <!-- back arrow (restore) -->
+  <path d="M44 76 L20 96 L44 116 L44 102 Q78 102 78 72 L66 72 Q66 90 44 90 Z"
+        fill="#1f6feb"/>
+  <!-- bin -->
+  <rect x="64" y="14" width="56" height="14" rx="3" fill="url(#bin)"/>
+  <path d="M70 28 L114 28 L108 116 a6 6 0 0 1 -6 6 L82 122 a6 6 0 0 1 -6 -6 Z"
+        fill="url(#bin)"/>
+  <!-- ribs -->
+  <rect x="80" y="40" width="24" height="4" rx="2" fill="rgba(255,255,255,.45)"/>
+  <rect x="80" y="56" width="24" height="4" rx="2" fill="rgba(255,255,255,.45)"/>
+  <rect x="80" y="72" width="24" height="4" rx="2" fill="rgba(255,255,255,.45)"/>
+</svg>

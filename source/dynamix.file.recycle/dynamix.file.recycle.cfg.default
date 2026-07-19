@@ -1,0 +1,51 @@
+; Default configuration for Dynamix File Recycle Bin.
+; This file is shipped with the plugin and copied to
+; /boot/config/plugins/dynamix.file.recycle/dynamix.file.recycle.cfg on first
+; install. Users edit their copy via Settings -> Dynamix File Recycle Bin.
+
+[global]
+; Master switch. When 0, the "Move to Recycle Bin" button is hidden and the
+; maintenance cron is a no-op.
+enabled = 1
+; auto = follow Unraid system language; en_US / zh_CN = force.
+language = auto
+; ERROR | WARN | INFO | DEBUG
+log_level = INFO
+; Rotate / purge log entries older than this many days. 0 = keep forever.
+log_retention_days = 30
+; Soft cap on the log file size in MiB. When exceeded the log is rotated.
+log_max_size_mib = 5
+
+[history]
+; Record deleted items into the SQLite store so they appear in Tools -> Recycle
+; Bin even after they were purged (state=purged).
+enabled = 1
+; Drop rows older than this many days. 0 = keep forever.
+retention_days = 365
+
+[maintenance]
+; How often (in hours) the cron should actually run maintenance. The cron
+; itself fires every hour, but it skips unless `interval_hours` has elapsed.
+interval_hours = 1
+; Age-based eviction: items with deleted_at older than age_days are purged.
+; 0 = disabled.
+age_days = 30
+; Capacity-based eviction: choose the mode.
+;   percent  -> trigger when .RecycleBin size > capacity_percent % of volume
+;   absolute -> trigger when .RecycleBin size > capacity_absolute_gb GiB
+capacity_mode = percent
+capacity_percent = 10
+capacity_absolute_gb = 0
+; When capacity eviction triggers, purge oldest-first (LRU) until under limit.
+; Optional auto-empty schedule (cron expression). Empty = disabled.
+; Example: "0 3 * * 0" = every Sunday 03:00.
+auto_empty_cron =
+; When 1, Maintenance will also vacuum the SQLite database periodically.
+vacuum_sqlite = 1
+
+[security]
+; Preserve owner/group/mode of moved items so they can be restored exactly.
+preserve_metadata = 1
+; Allow non-admin users to manage their own recycled items (experimental).
+; 0 = admin-only (recommended).
+allow_user_self_service = 0

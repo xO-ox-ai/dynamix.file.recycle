@@ -1,0 +1,31 @@
+# Build artifacts
+/build/
+*.txz
+*.tgz
+*.tar.gz
+*.zip
+
+# Generated MD5
+/*.md5
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local dev state
+.local/
+tmp/
+
+# Keep the screenshots folder tracked (placeholder)
+!docs/screenshots/.gitkeep
+
+# Local-only artefacts that must never leak
+/.pat
+/.token
+
+# IDE / agent session artefacts
+/.zcode/

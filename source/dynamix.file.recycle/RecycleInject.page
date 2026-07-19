@@ -1,0 +1,111 @@
+Menu='Buttons:5'
+Title='Dynamix File Recycle Bin'
+---
+<?php
+/**
+ * RecycleInject.page — header-injected loader for the recycle bin front-end.
+ *
+ * This file uses the official Unraid `Menu='Buttons'` page channel. The
+ * DefaultPageLayout.php `find_pages('Buttons')` collects it and includes its
+ * body into every page's <head>. We therefore do NOT modify HeadInlineJS.php,
+ * Browse.page, or any dynamix file — we just ride the same channel the
+ * official DFM BrowseButton.page (Buttons:3a) already uses.
+ *
+ * Rank 5 makes us load AFTER DFM (3a), so when the Browse page renders, our
+ * <script> can find the DFM globals (window.doAction, window.doActions) and
+ * wrap them.
+ *
+ * The injected JSON object `window.__recycleRuntime` carries:
+ *   - csrfToken   string   (read from $var, NOT hardcoded in JS)
+ *   - apiBase     string   '/plugins/dynamix.file.recycle/api.php'
+ *   - lang        string   resolved language code
+ *   - i18n        object   translations the JS needs
+ *   - enabled     bool     master switch
+ *   - browse      bool     whether we are currently on a Browse page
+ *   - scopeRoots  string[] /mnt/disk* and ZFS dataset roots currently visible
+ *
+ * The script itself is loaded from javascript/recycle.js and is intentionally
+ * self-contained (no jQuery dependency beyond what DFM already pulls in).
+ */
+
+$pluginRoot = '/plugins/dynamix.file.recycle';
+$bootFile   = __DIR__ . '/include/Bootstrap.php';
+if (!is_file($bootFile)) {
+    return; // plugin partially uninstalled; bail silently.
+}
+require_once $bootFile;
+
+use function DynamixFileRecycle\boot;
+
+$c = boot();
+$cfg = $c->config();
+$i18n = $c->i18n();
+$fs = $c->fs();
+
+// Only emit on Browse pages. $myPage is provided by DefaultPageLayout.php.
+$onBrowse = isset($myPage) && is_array($myPage) && (($myPage['name'] ?? '') === 'Browse');
+// Also accept the case where we are on /Main/Browse (URL-based).
+if (!$onBrowse) {
+    $req = $_SERVER['REQUEST_URI'] ?? '';
+    if (preg_match('#/Browse(\?|$)#', $req)) {
+        $onBrowse = true;
+    }
+}
+
+// Read CSRF token from Unraid state. Prefer $var (already-loaded dynamix
+// globals), fall back to parsing var.ini ourselves.
+$csrf = '';
+if (isset($var) && is_array($var) && !empty($var['csrf_token'])) {
+    $csrf = (string) $var['csrf_token'];
+}
+if ($csrf === '') {
+    $varIni = '/usr/local/emhttp/state/var.ini';
+    if (is_file($varIni)) {
+        $parsed = @parse_ini_string((string) file_get_contents($varIni));
+        if (is_array($parsed) && !empty($parsed['csrf_token'])) {
+            $csrf = (string) $parsed['csrf_token'];
+        }
+    }
+}
+
+// Collect visible scope roots: every /mnt/diskN present on disk plus ZFS
+// dataset mounts under /mnt. We hand this to JS so it can pre-classify
+// button state without round-tripping for every row.
+$scopeRoots = [];
+foreach (glob('/mnt/disk*', GLOB_ONLYDIR) as $d) {
+    $scopeRoots[] = $d;
+}
+foreach ($fs->zfsRootsForFrontend() as $r) {
+    $scopeRoots[] = $r;
+}
+
+$runtime = [
+    'csrfToken'  => $csrf,
+    'apiBase'    => $pluginRoot . '/api.php',
+    'lang'       => $i18n->lang(),
+    'enabled'    => $cfg->getEnabled(),
+    'browse'     => $onBrowse,
+    'history'    => $cfg->getHistoryEnabled(),
+    'scopeRoots' => $scopeRoots,
+    'i18n' => [
+        'btnTitle'        => $i18n->t('btn.title'),
+        'btnTitleBlocked' => $i18n->t('btn.title.blocked'),
+        'btnTitleError'   => $i18n->t('btn.title.error'),
+        'stateIdle'       => $i18n->t('state.idle'),
+        'stateChecking'   => $i18n->t('state.checking'),
+        'stateRunning'    => $i18n->t('state.running'),
+        'stateBlocked'    => $i18n->t('state.blocked'),
+        'stateError'      => $i18n->t('state.error'),
+        'confirmRecycle'  => $i18n->t('confirm.recycle'),
+        'doneMessage'     => $i18n->t('done.message'),
+        'errorMessage'    => $i18n->t('error.message'),
+    ],
+];
+
+$runtimeJson = json_encode($runtime, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+?>
+<link rel="stylesheet" href="<?= htmlspecialchars($pluginRoot . '/javascript/recycle.css', ENT_QUOTES) ?>" data-recycle-asset="css">
+<script>
+window.__recycleRuntime = <?= $runtimeJson ?>;
+</script>
+<script src="<?= htmlspecialchars($pluginRoot . '/javascript/recycle.js', ENT_QUOTES) ?>" data-recycle-asset="js"></script>

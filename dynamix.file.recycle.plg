@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Dynamix File Recycle Bin - Unraid plugin descriptor.
+
+  This .plg file is consumed by the Unraid plugin manager (Community
+  Applications). It:
+    1. Downloads the versioned .txz package from the release URL.
+    2. Verifies the MD5.
+    3. Extracts it onto the root filesystem under
+       /usr/local/emhttp/plugins/dynamix.file.recycle/.
+    4. Runs the install hook (register cron, init SQLite, i18n, etc).
+    5. On removal: de-registers cron and removes the plugin directory
+       (RecycleBin data is preserved by default).
+
+  The MD5 placeholder below MUST be replaced by the actual MD5 of the
+  built .txz package (see tools/build.sh) before publishing a release.
+-->
+<!DOCTYPE PLUGIN [
+  <!ENTITY name      "dynamix.file.recycle">
+  <!ENTITY author    "dynamix-file-recycle">
+  <!ENTITY version   "1.0.0">
+  <!ENTITY launch    "/Tools/RecycleBin">
+  <!ENTITY repo      "https://github.com/dynamix-file-recycle/dynamix.file.recycle">
+  <!ENTITY pluginURL "&repo;/releases/download/v&version;/dynamix.file.recycle.plg">
+  <!ENTITY package   "&repo;/releases/download/v&version;/dynamix.file.recycle-&version;.txz">
+  <!ENTITY min       "7.3.2">
+]>
+<PLUGIN name="&name;"
+        author="&author;"
+        version="&version;"
+        launch="&launch;"
+        pluginURL="&pluginURL;"
+        min="&min;"
+        repo="&repo;">
+<NAME>
+  <![CDATA[Dynamix File Recycle Bin]]>
+</NAME>
+<DESCRIPTION>
+  <![CDATA[
+A safe recycle bin for the Unraid Dynamix File Manager. Adds a "Move to Recycle
+Bin" button next to each row in the file browser and moves the selected
+file/folder into a per-volume .RecycleBin directory instead of deleting it
+permanently.
+
+为 Unraid Dynamix 文件浏览器打造的安全回收站插件。在文件浏览器的每一行旁添加
+一个"移入回收站"按钮，将文件/文件夹移入对应卷的 .RecycleBin 目录，而非永久删除。
+  ]]>
+</DESCRIPTION>
+<CHANGES>
+<![CDATA[
+### &version;
+- Initial release.
+- "Move to Recycle Bin" button injected into the Dynamix File Manager Browse
+  page via the official `Menu='Buttons'` channel (no Unraid core file modified).
+- Per-volume .RecycleBin for /mnt/disk* data drives and ZFS datasets.
+- SQLite history store with `active | restored | purged` state field.
+- Settings page (English + 中文): feature toggle, log level, log retention,
+  age-based eviction, capacity threshold eviction (percent or absolute),
+  scheduled cleanup interval, optional auto-empty, history toggle, language.
+- Tools -> Recycle Bin browser page.
+- Maintenance script invoked by Unraid cron.
+- CSRF handled by Unraid auto_prepend (plugin never re-implements CSRF).
+]]>
+</CHANGES>
+<FILE Name="/tmp/dynamix.file.recycle-&version;.txz">
+  <URL>&package;</URL>
+  <!-- MD5 placeholder; replaced by tools/build.sh at release time. -->
+  <MD5>00000000000000000000000000000000</MD5>
+</FILE>
+<!--
+  Installation / registration script. Runs once after the .txz is downloaded
+  and verified. The .txz is extracted by the plugin manager into the root
+  filesystem (paths inside the tarball are absolute from /), so the install
+  hook only needs to do post-extract work: register cron, init SQLite, and
+  print a summary.
+-->
+<FILE Name="/usr/local/emhttp/plugins/&name;/scripts/install.sh"
+      Run="/bin/bash">
+  <![CDATA[
+#!/bin/bash
+# Install hook for Dynamix File Recycle Bin.
+set -euo pipefail
+PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
+CFG_DIR="/boot/config/plugins/dynamix.file.recycle"
+STATE_DIR="/usr/local/emhttp/state/plugins/dynamix.file.recycle"
+
+# 1. Extract the downloaded package into the root filesystem.
+if [[ -f "/tmp/dynamix.file.recycle-${PLUGIN_VERSION:-1.0.0}.txz" ]]; then
+  tar -xJf "/tmp/dynamix.file.recycle-${PLUGIN_VERSION:-1.0.0}.txz" -C /
+  rm -f "/tmp/dynamix.file.recycle-${PLUGIN_VERSION:-1.0.0}.txz"
+fi
+
+# 2. Ensure persistent config directory survives reboot.
+mkdir -p "$CFG_DIR"
+if [[ ! -f "$CFG_DIR/dynamix.file.recycle.cfg" ]]; then
+  cp -f "$PLUGIN_DIR/dynamix.file.recycle.cfg.default" \
+        "$CFG_DIR/dynamix.file.recycle.cfg" 2>/dev/null || true
+fi
+
+# 3. Ensure state directory exists (SQLite lives here).
+mkdir -p "$STATE_DIR"
+
+# 4. Initialise the SQLite database if missing.
+if [[ -x /usr/local/bin/php ]]; then
+  /usr/local/bin/php "$PLUGIN_DIR/include/Bootstrap.php" init || true
+fi
+
+# 5. Register hourly cron entry for maintenance.
+CRON_SRC="$PLUGIN_DIR/cron/dynamix.file.recycle.cron"
+CRON_DST="/etc/cron.hourly/dynamix.file.recycle"
+if [[ -f "$CRON_SRC" ]]; then
+  cp -f "$CRON_SRC" "$CRON_DST"
+  chmod 0755 "$CRON_DST"
+fi
+
+# 6. Register a daily log rotation entry (best-effort).
+LOGROT_SRC="$PLUGIN_DIR/cron/dynamix.file.recycle.logrotate"
+if [[ -f "$LOGROT_SRC" ]]; then
+  cp -f "$LOGROT_SRC" /etc/logrotate.d/dynamix.file.recycle
+fi
+
+echo "Dynamix File Recycle Bin &version; installed."
+echo "Open Tools -> Recycle Bin to browse the bin."
+echo "Open Settings -> Dynamix File Recycle Bin to enable the feature."
+  ]]>
+</FILE>
+<!--
+  Removal hook. Called when the user uninstalls the plugin. We de-register the
+  cron and remove the plugin directory, but we deliberately KEEP the .RecycleBin
+  data and the SQLite history so the user can recover manually if needed.
+  Users who want a full wipe can delete the .RecycleBin directories and
+  /boot/config/plugins/dynamix.file.recycle/ themselves.
+-->
+<FILE Name="/usr/local/emhttp/plugins/&name;/scripts/remove.sh"
+      Run="/bin/bash">
+  <![CDATA[
+#!/bin/bash
+# Removal hook for Dynamix File Recycle Bin.
+set -uo pipefail
+
+# 1. Remove cron entries.
+rm -f /etc/cron.hourly/dynamix.file.recycle
+rm -f /etc/logrotate.d/dynamix.file.recycle
+
+# 2. Remove plugin code directory.
+PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
+rm -rf "$PLUGIN_DIR"
+
+# 3. Remove transient state (SQLite + logs). The persistent config under
+#    /boot/config/ is intentionally preserved so the user can re-install
+#    without losing settings.
+rm -rf /usr/local/emhttp/state/plugins/dynamix.file.recycle
+
+cat <<'EOF'
+Dynamix File Recycle Bin has been removed.
+
+NOTE: Per-volume .RecycleBin directories and your settings under
+/boot/config/plugins/dynamix.file.recycle/ have been preserved so you do not
+lose data. If you want a complete wipe, remove them manually:
+
+  find /mnt -maxdepth 3 -type d -name .RecycleBin -print
+  rm -rf /boot/config/plugins/dynamix.file.recycle
+EOF
+  ]]>
+</FILE>
+<!--
+  The two scripts above are also copied verbatim into the plugin directory by
+  the .txz so they can be inspected / re-run manually if needed. The plugin
+  manager invokes them automatically on install / uninstall.
+-->
+</PLUGIN>

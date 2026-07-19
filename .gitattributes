@@ -1,0 +1,33 @@
+# Force LF line endings on text files. This plugin ships shell scripts and
+# PHP code that MUST run on Linux (Unraid). CRLF would break the shebang
+# lines and PHP "headers already sent" edge cases.
+
+# Default: text = LF
+* text=auto eol=lf
+
+# Shell scripts and other Unix-only files: always LF
+*.sh         text eol=lf
+*.bash       text eol=lf
+*.cron       text eol=lf
+recycle-maintain text eol=lf
+*.plg        text eol=lf
+*.page       text eol=lf
+*.php        text eol=lf
+*.sql        text eol=lf
+*.js         text eol=lf
+*.css        text eol=lf
+*.json       text eol=lf
+*.xml        text eol=lf
+*.svg        text eol=lf
+*.md         text eol=lf
+*.txt        text eol=lf
+Makefile     text eol=lf
+logrotate    text eol=lf
+
+# Binary
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.ico        binary
+*.txz        binary
+*.tgz        binary

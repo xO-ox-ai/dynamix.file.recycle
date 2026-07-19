@@ -1,0 +1,24 @@
+; Dynamix File Recycle Bin — 简体中文语言文件。
+; 平铺的 key=value 格式。点号 key 是字面量（加载器不会把 [section] 当作命名空间）。
+; 以 ; 或 # 开头的行是注释。缺失的 key 会自动回退到 en_US。
+
+btn.title          = "移入回收站"
+btn.title.blocked  = "范围外：v1 仅支持 /mnt/disk* 与 ZFS dataset"
+btn.title.error    = "上次操作失败，点击重试"
+
+state.idle       = "就绪"
+state.checking   = "检查中..."
+state.running    = "处理中..."
+state.blocked    = "此处不支持"
+state.error      = "错误"
+state.done       = "完成"
+
+confirm.recycle  = "确认将此项移入回收站？"
+
+done.message     = "已移入回收站。"
+error.message    = "操作失败。"
+
+settings.title        = "Dynamix 文件回收站"
+settings.tab.main     = "常规"
+settings.tab.maint    = "维护"
+settings.tab.security = "安全"

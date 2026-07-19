@@ -1,0 +1,23 @@
+{
+  "$schema": "https://ca.unraid.net/schema/plugins.json",
+  "name": "Dynamix File Recycle Bin",
+  "author": "dynamix-file-recycle",
+  "category": [
+    "Tools"
+  ],
+  "description": "A safe recycle bin for the Unraid Dynamix File Manager. Adds a 'Move to Recycle Bin' button next to each row in the file browser and moves the selected file/folder into a per-volume .RecycleBin directory instead of deleting it permanently. v1 supports /mnt/disk* data drives and ZFS datasets. Bilingual UI (English + Chinese).",
+  "overview": "Adds per-volume recycle bin support to the Unraid Dynamix File Manager, with age/capacity-based maintenance, bilingual UI, and full history tracking. 为 Unraid Dynamix 文件浏览器添加安全回收站：每盘一个 .RecycleBin，带年龄/容量维护策略、中英双语界面与完整历史记录。",
+  "icon": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.png",
+  "logo": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.png",
+  "tag": "tools",
+  "version": "1.0.0",
+  "plugin": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg",
+  "repo": "https://github.com/xO-ox-ai/dynamix.file.recycle",
+  "website": "https://github.com/xO-ox-ai/dynamix.file.recycle",
+  "support": "https://github.com/xO-ox-ai/dynamix.file.recycle/issues",
+  "language": [
+    "en_US",
+    "zh_CN"
+  ],
+  "last_update": "2026-07-19"
+}

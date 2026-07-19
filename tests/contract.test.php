@@ -27,6 +27,8 @@ check(str_contains($plg, '<SHA256>'), 'PLG must use SHA256');
 check(!str_contains($plg, '<MD5>'), 'PLG still uses MD5');
 check(str_contains($plg, 'raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg'), 'pluginURL is not stable');
 check(str_contains($plg, '/boot/config/plugins/&name;/&packageName;'), 'release package is not cached on /boot');
+check(str_contains($plg, 'releases/download/&version;/&packageName;'), 'release URL must use the exact version without a v prefix');
+check(!str_contains($plg, 'releases/download/v&version;'), 'release URL still adds an unwanted v prefix');
 
 $api = source('source/dynamix.file.recycle/api.php');
 check(str_contains($api, "REQUEST_METHOD'] ?? '') !== 'POST'"), 'API does not require POST');

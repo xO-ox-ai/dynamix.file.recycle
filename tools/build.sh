@@ -118,6 +118,6 @@ echo "  $OUT_TXZ"
 echo "  $OUT_PLG"
 echo
 echo "Next steps:"
-echo "  1. Create a git tag v$VERSION and push it."
-echo "  2. Create a GitHub release v$VERSION and attach the .txz and the .plg."
+echo "  1. Create a git tag $VERSION and push it."
+echo "  2. Create a GitHub release $VERSION and attach the .txz and the .plg."
 echo "  3. Submit $OUT_PLG URL to Community Applications."

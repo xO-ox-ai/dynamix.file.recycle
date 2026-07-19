@@ -23,7 +23,7 @@
   <!ENTITY pluginURL "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg">
   <!ENTITY supportURL "&repo;/issues">
   <!ENTITY packageName "dynamix.file.recycle-&version;-x86_64-1.txz">
-  <!ENTITY packageURL "&repo;/releases/download/v&version;/&packageName;">
+  <!ENTITY packageURL "&repo;/releases/download/&version;/&packageName;">
   <!ENTITY min       "7.3.2">
 ]>
 <PLUGIN name="&name;"

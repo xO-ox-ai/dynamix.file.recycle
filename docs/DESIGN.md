@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.20a` architecture and its conservative
+This document describes the `2026.07.20b` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -40,6 +40,11 @@ route gate. Unsupported
 file-browser roots such as `/mnt/remotes` and `/mnt/disks` still render the
 Recycle control in a permanently disabled state without changing the file
 list or any Unassigned Devices data.
+
+`RecycleLanguageHook.page` is a separate, output-free `Buttons:5z` hook. It
+merges only the plugin-local menu-title catalog before Unraid builds Settings
+and Tools panels. It does not load Bootstrap, configuration, storage discovery
+or front-end assets, so localization cannot reintroduce Main/UD coupling.
 
 The plugin inserts one `input.extra` control immediately before DFM's native
 Delete control in `#buttons`. Reusing the native class means DFM's own

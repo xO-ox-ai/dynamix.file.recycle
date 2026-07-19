@@ -38,7 +38,42 @@ if ($systemEnglish->lang() !== 'en_US' || $systemEnglish->t('btn.title') !== 'Mo
 $menuFile = dirname(__DIR__) . '/source/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt';
 $menuTranslations = parse_ini_file($menuFile, false, INI_SCANNER_RAW);
 if (!is_array($menuTranslations)
-    || ($menuTranslations['Dynamix File Recycle Bin'] ?? '') !== '文件回收站') {
+    || ($menuTranslations['Dynamix File Recycle Bin'] ?? '') !== '文件回收站'
+    || ($menuTranslations['Recycle Bin'] ?? '') !== '回收站') {
     throw new RuntimeException('Unraid menu translation file is invalid.');
+}
+
+$menuHookFile = dirname(__DIR__) . '/source/dynamix.file.recycle/RecycleLanguageHook.page';
+$menuHook = (string) file_get_contents($menuHookFile);
+$separator = strpos($menuHook, "---\n");
+if ($separator === false) {
+    throw new RuntimeException('Unraid menu localization hook is invalid.');
+}
+$menuHookBody = substr($menuHook, $separator + 4);
+$menuHookBody = str_replace(
+    '/usr/local/emhttp/plugins/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt',
+    str_replace('\\', '/', $menuFile),
+    $menuHookBody
+);
+
+$_SESSION['locale'] = 'zh_CN';
+$GLOBALS['language'] = ['Existing title' => '保留'];
+ob_start();
+eval('?>' . $menuHookBody);
+$menuHookOutput = (string) ob_get_clean();
+if ($menuHookOutput !== ''
+    || ($GLOBALS['language']['Dynamix File Recycle Bin'] ?? '') !== '文件回收站'
+    || ($GLOBALS['language']['Recycle Bin'] ?? '') !== '回收站'
+    || ($GLOBALS['language']['Existing title'] ?? '') !== '保留') {
+    throw new RuntimeException('Chinese menu titles are not merged without output.');
+}
+
+$_SESSION['locale'] = 'en_US';
+$GLOBALS['language'] = ['Existing title' => 'Existing title'];
+ob_start();
+eval('?>' . $menuHookBody);
+$menuHookOutput = (string) ob_get_clean();
+if ($menuHookOutput !== '' || array_key_exists('Recycle Bin', $GLOBALS['language'])) {
+    throw new RuntimeException('English menu titles were unexpectedly overridden.');
 }
 echo "Localization contract tests passed.\n";

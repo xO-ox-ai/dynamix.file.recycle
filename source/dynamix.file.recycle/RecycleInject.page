@@ -47,22 +47,6 @@ if (!is_file($bootFile)) {
 }
 require_once $bootFile;
 
-// Merge the plugin-local title catalog before Unraid builds menu panels. This
-// avoids depending on the global language-pack cache, which can be rebuilt by
-// Unraid independently of third-party plugin installation.
-$localeCode = strtolower((string) ($_SESSION['locale'] ?? ($GLOBALS['locale'] ?? 'en_US')));
-if (str_starts_with($localeCode, 'zh')) {
-    $catalog = @parse_ini_file(
-        $pluginDir . '/unraid-language/zh_CN/dynamix.file.recycle.txt',
-        false,
-        INI_SCANNER_RAW
-    );
-    if (is_array($catalog)) {
-        $baseLanguage = $GLOBALS['language'] ?? [];
-        $GLOBALS['language'] = array_merge(is_array($baseLanguage) ? $baseLanguage : [], $catalog);
-    }
-}
-
 try {
     $c = \DynamixFileRecycle\boot();
     $cfg = $c->config();

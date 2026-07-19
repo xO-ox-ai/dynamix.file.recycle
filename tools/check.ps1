@@ -105,6 +105,9 @@ if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.re
 if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.recycle/DynamixFileRecycle.page' })) {
     throw 'Package is missing its User Programs settings page.'
 }
+if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.recycle/RecycleLanguageHook.page' })) {
+    throw 'Package is missing its menu localization hook.'
+}
 if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt' })) {
     throw 'Package is missing its Chinese Unraid menu translation.'
 }

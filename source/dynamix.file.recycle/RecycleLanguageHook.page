@@ -1,0 +1,25 @@
+Menu="Buttons:5z"
+Title="Dynamix File Recycle Bin"
+Link="recycle-language-hook"
+---
+<?php
+// Buttons pages are evaluated before Unraid builds its navigation panels.
+// Keep menu localization independent of the DFM runtime hook so Settings and
+// Tools titles follow the active locale without loading plugin services.
+$recycleMenuLocale = strtolower((string) (
+    $_SESSION['locale'] ?? ($GLOBALS['locale'] ?? 'en_US')
+));
+if (str_starts_with($recycleMenuLocale, 'zh')) {
+    $recycleMenuCatalog = @parse_ini_file(
+        '/usr/local/emhttp/plugins/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt',
+        false,
+        INI_SCANNER_RAW
+    );
+    if (is_array($recycleMenuCatalog)) {
+        $recycleBaseLanguage = $GLOBALS['language'] ?? [];
+        $GLOBALS['language'] = array_merge(
+            is_array($recycleBaseLanguage) ? $recycleBaseLanguage : [],
+            $recycleMenuCatalog
+        );
+    }
+}

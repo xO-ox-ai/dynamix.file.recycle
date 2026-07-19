@@ -9,6 +9,15 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.20b] - 2026-07-20
+
+### Fixed
+
+- Restored system-language-aware Settings and Tools menu titles with a
+  dedicated output-free localization hook. Menu localization no longer depends
+  on the `/Main/Browse` runtime hook and does not initialize plugin services on
+  Main or Unassigned Devices.
+
 ## [2026.07.20a] - 2026-07-20
 
 ### Fixed

@@ -119,6 +119,7 @@ check(
 );
 
 $inject = source('source/dynamix.file.recycle/RecycleInject.page');
+$languageHook = source('source/dynamix.file.recycle/RecycleLanguageHook.page');
 $renderInject = static function (string $pageSource, string $requestUri): string {
     $separator = strpos($pageSource, "---\n");
     if ($separator === false) throw new RuntimeException('Runtime hook page separator is missing');
@@ -136,13 +137,16 @@ $renderInject = static function (string $pageSource, string $requestUri): string
     }
 };
 check($renderInject($inject, '/Main') === '', 'runtime hook emits output on the Main/UD page');
-check(str_contains($inject, "parse_ini_file("), 'plugin-local Unraid menu translations are not loaded');
 check(str_contains($inject, "\$pluginDir  = '/usr/local/emhttp/plugins/dynamix.file.recycle'"), 'runtime hook does not use the absolute plugin directory');
 check(!str_contains($inject, 'parse_plugin('), 'menu translation still depends on Unraid global plugin cache state');
 check(str_contains($inject, "Link='recycle-runtime-hook'"), 'runtime hook can appear as an unwanted navigation button');
 check(substr_count($inject, 'autov(') === 2, 'front-end assets do not use Unraid cache busting');
 check(substr_count($inject, 'rawurlencode($version)') === 2, 'DFM assets are not keyed by plugin version');
 check(str_contains($inject, "preg_match('#(?:^|/)Main/Browse/?$#'"), 'runtime hook is not restricted to the official DFM route');
+check(str_contains($languageHook, 'Menu="Buttons:5z"'), 'menu localization does not use a dedicated pre-navigation hook');
+check(str_contains($languageHook, 'dynamix.file.recycle.txt'), 'menu localization hook does not load the plugin-local catalog');
+check(!str_contains($languageHook, 'Bootstrap.php'), 'menu localization hook loads plugin runtime services');
+check(!str_contains($languageHook, '<script') && !str_contains($languageHook, '<link'), 'menu localization hook emits front-end assets');
 check(
     strpos($inject, "preg_match('#(?:^|/)Main/Browse/?$#'") < strpos($inject, 'require_once $bootFile'),
     'runtime hook performs plugin or storage initialization before checking the DFM route'

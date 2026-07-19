@@ -1,4 +1,4 @@
-Menu="OtherSettings:30 DiskUtilities:30"
+Menu="Settings:30"
 Title="Dynamix File Recycle Bin"
 Icon="recycle"
 Tag="recycle"
@@ -26,20 +26,27 @@ foreach ([
     'logSize' => 'settings.log_size',
     'history' => 'settings.history',
     'recordHistory' => 'settings.record_history',
+    'historyHint' => 'settings.history_hint',
     'historyRetention' => 'settings.history_retention',
+    'historyRetentionHint' => 'settings.history_retention_hint',
     'maintenance' => 'settings.maintenance',
     'maintenanceHint' => 'settings.maintenance_hint',
     'ageDays' => 'settings.age_days',
+    'ageDaysHint' => 'settings.age_days_hint',
     'capacityMode' => 'settings.capacity_mode',
     'percent' => 'settings.percent',
     'absolute' => 'settings.absolute',
     'capacityPercent' => 'settings.capacity_percent',
+    'capacityPercentHint' => 'settings.capacity_percent_hint',
     'capacityAbsolute' => 'settings.capacity_absolute',
+    'capacityAbsoluteHint' => 'settings.capacity_absolute_hint',
     'scheduledCleanup' => 'settings.scheduled_cleanup',
     'cronHint' => 'settings.cron_hint',
     'vacuum' => 'settings.vacuum',
+    'vacuumHint' => 'settings.vacuum_hint',
     'security' => 'settings.security',
     'preserveMetadata' => 'settings.preserve_metadata',
+    'preserveMetadataHint' => 'settings.preserve_metadata_hint',
     'status' => 'settings.status',
     'activeItems' => 'settings.active_items',
     'runtimeLog' => 'settings.runtime_log',
@@ -47,6 +54,16 @@ foreach ([
     'sqliteLayout' => 'settings.sqlite_layout',
     'save' => 'settings.save',
     'openBin' => 'settings.open_bin',
+    'clearLogs' => 'settings.clear_logs',
+    'clearLogsHint' => 'settings.clear_logs_hint',
+    'clearHistory' => 'settings.clear_history',
+    'clearHistoryHint' => 'settings.clear_history_hint',
+    'confirmClearLogs' => 'settings.confirm_clear_logs',
+    'confirmClearHistory' => 'settings.confirm_clear_history',
+    'logsCleared' => 'settings.logs_cleared',
+    'historyCleared' => 'settings.history_cleared',
+    'arrayDisks' => 'settings.array_disks',
+    'zfsDatasets' => 'settings.zfs_datasets',
     'loading' => 'settings.loading',
     'saving' => 'settings.saving',
     'saved' => 'settings.saved',
@@ -56,6 +73,8 @@ foreach ([
     $recycleSettingsCatalog[$recycleSettingsKey] = $recycleSettingsI18n->t($recycleSettingsTranslationKey);
 }
 $recycleSettingsVar = $var ?? @parse_ini_file('/var/local/emhttp/var.ini') ?: [];
+$recycleAssetVersion = is_file($recyclePluginDir . '/VERSION')
+    ? trim((string) file_get_contents($recyclePluginDir . '/VERSION')) : 'dev';
 $recycleSettingsRuntime = [
     'apiUrl' => '/plugins/dynamix.file.recycle/api.php',
     'csrfToken' => (string) ($recycleSettingsVar['csrf_token'] ?? ''),
@@ -63,7 +82,7 @@ $recycleSettingsRuntime = [
     'i18n' => $recycleSettingsCatalog,
 ];
 ?>
-<link rel="stylesheet" href="<?autov('/plugins/dynamix.file.recycle/javascript/settings.css')?>">
+<link rel="stylesheet" href="<?autov('/plugins/dynamix.file.recycle/javascript/settings.css')?>&amp;plugin=<?=rawurlencode($recycleAssetVersion)?>">
 
 <div id="recycle-settings" class="recycle-settings">
   <div id="recycle-settings-notice" class="recycle-settings-notice" role="status" aria-live="polite"></div>
@@ -118,9 +137,15 @@ $recycleSettingsRuntime = [
       <h2 data-i18n="history">History</h2>
       <dl>
         <dt data-i18n="recordHistory">Record history</dt>
-        <dd><label><input type="checkbox" name="history_enabled" value="1"> <span data-i18n="enabled">Enabled</span></label></dd>
+        <dd>
+          <label><input type="checkbox" name="history_enabled" value="1"> <span data-i18n="enabled">Enabled</span></label>
+          <span class="hint" data-i18n="historyHint">Keep audit rows after an item is restored or permanently deleted. Active recycle records are always retained.</span>
+        </dd>
         <dt><label for="recycle-history-retention" data-i18n="historyRetention">History retention (days)</label></dt>
-        <dd><input id="recycle-history-retention" type="number" name="history_retention_days" min="0" max="36500"></dd>
+        <dd>
+          <input id="recycle-history-retention" type="number" name="history_retention_days" min="0" max="36500">
+          <span class="hint" data-i18n="historyRetentionHint">0 keeps restored and purged audit rows indefinitely.</span>
+        </dd>
       </dl>
     </section>
 
@@ -129,7 +154,10 @@ $recycleSettingsRuntime = [
       <p class="hint" data-i18n="maintenanceHint">Maintenance runs only with the configured cleanup schedule or an explicit manual action.</p>
       <dl>
         <dt><label for="recycle-age-days" data-i18n="ageDays">Age eviction (days)</label></dt>
-        <dd><input id="recycle-age-days" type="number" name="age_days" min="0" max="36500"></dd>
+        <dd>
+          <input id="recycle-age-days" type="number" name="age_days" min="0" max="36500">
+          <span class="hint" data-i18n="ageDaysHint">Permanently deletes active recycle items older than this during maintenance. 0 disables age eviction.</span>
+        </dd>
         <dt><label for="recycle-capacity-mode" data-i18n="capacityMode">Capacity mode</label></dt>
         <dd>
           <select id="recycle-capacity-mode" name="capacity_mode">
@@ -138,16 +166,25 @@ $recycleSettingsRuntime = [
           </select>
         </dd>
         <dt><label for="recycle-capacity-percent" data-i18n="capacityPercent">Capacity percent (%)</label></dt>
-        <dd><input id="recycle-capacity-percent" type="number" name="capacity_percent" min="0" max="100"></dd>
+        <dd>
+          <input id="recycle-capacity-percent" type="number" name="capacity_percent" min="0" max="100">
+          <span class="hint" data-i18n="capacityPercentHint">Maximum recycle-bin share of each volume. 0 disables this limit.</span>
+        </dd>
         <dt><label for="recycle-capacity-absolute" data-i18n="capacityAbsolute">Capacity absolute (GiB)</label></dt>
-        <dd><input id="recycle-capacity-absolute" type="number" name="capacity_absolute_gb" min="0" max="1048576"></dd>
+        <dd>
+          <input id="recycle-capacity-absolute" type="number" name="capacity_absolute_gb" min="0" max="1048576">
+          <span class="hint" data-i18n="capacityAbsoluteHint">0 means no absolute capacity limit, not zero available space.</span>
+        </dd>
         <dt><label for="recycle-cron" data-i18n="scheduledCleanup">Scheduled cleanup (cron)</label></dt>
         <dd>
           <input id="recycle-cron" type="text" name="auto_empty_cron" placeholder="0 3 * * 0">
           <span class="hint" data-i18n="cronHint">Example: 0 3 * * 0 runs every Sunday at 03:00. Empty disables scheduled work.</span>
         </dd>
         <dt data-i18n="vacuum">Vacuum SQLite</dt>
-        <dd><label><input type="checkbox" name="vacuum_sqlite" value="1"> <span data-i18n="enabled">Enabled</span></label></dd>
+        <dd>
+          <label><input type="checkbox" name="vacuum_sqlite" value="1"> <span data-i18n="enabled">Enabled</span></label>
+          <span class="hint" data-i18n="vacuumHint">Reclaims unused database pages during scheduled maintenance. It may briefly increase disk I/O and lock the history database.</span>
+        </dd>
       </dl>
     </section>
 
@@ -155,7 +192,10 @@ $recycleSettingsRuntime = [
       <h2 data-i18n="security">Security</h2>
       <dl>
         <dt data-i18n="preserveMetadata">Preserve metadata</dt>
-        <dd><label><input type="checkbox" name="preserve_metadata" value="1"> <span data-i18n="enabled">Enabled</span></label></dd>
+        <dd>
+          <label><input type="checkbox" name="preserve_metadata" value="1"> <span data-i18n="enabled">Enabled</span></label>
+          <span class="hint" data-i18n="preserveMetadataHint">Restores the original owner, group, permissions and modification time. Disable only if restored files should inherit newly created defaults.</span>
+        </dd>
       </dl>
     </section>
 
@@ -176,11 +216,15 @@ $recycleSettingsRuntime = [
     <div class="recycle-settings-actions">
       <button type="submit"><i class="fa fa-save" aria-hidden="true"></i> <span data-i18n="save">Save</span></button>
       <button type="button" id="recycle-open-bin"><i class="fa fa-folder-open" aria-hidden="true"></i> <span data-i18n="openBin">Open Recycle Bin</span></button>
+      <button type="button" id="recycle-clear-logs"><i class="fa fa-file-text-o" aria-hidden="true"></i> <span data-i18n="clearLogs">Clear logs</span></button>
+      <button type="button" id="recycle-clear-history" class="recycle-danger"><i class="fa fa-history" aria-hidden="true"></i> <span data-i18n="clearHistory">Clear deleted-item history</span></button>
     </div>
+    <p class="hint recycle-action-help"><span data-i18n="clearLogsHint">Clear runtime, persistent audit and SQLite event logs.</span></p>
+    <p class="hint recycle-action-help"><span data-i18n="clearHistoryHint">Deletes only restored and purged history rows. Active recycle items and files are preserved.</span></p>
   </form>
 </div>
 
 <script>
 window.DynamixFileRecycleSettingsRuntime = Object.freeze(<?=json_encode($recycleSettingsRuntime, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>);
 </script>
-<script src="<?autov('/plugins/dynamix.file.recycle/javascript/settings.js')?>"></script>
+<script src="<?autov('/plugins/dynamix.file.recycle/javascript/settings.js')?>&amp;plugin=<?=rawurlencode($recycleAssetVersion)?>"></script>

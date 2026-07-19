@@ -1,216 +1,97 @@
+Menu="DiskUtilities:30"
 Title="Recycle Bin"
 Icon="recycle"
+Tag="recycle"
 ---
 <?php
-/**
- * RecycleBin.page — Tools -> Recycle Bin browser.
- *
- * Lists the contents of every per-volume .RecycleBin (via api.php?action=list)
- * and, when history is enabled, additionally shows restored/purged rows with a
- * state badge to distinguish them.
- *
- * This page is rendered server-side; it talks to api.php over a normal
- * same-origin fetch with CSRF token in the body. The page itself does NOT
- * perform CSRF checks — only the POST mutations do, and those go through
- * api.php.
- */
-
-require_once '/usr/local/emhttp/plugins/dynamix.file.recycle/include/Bootstrap.php';
-
-try {
-    $c = \DynamixFileRecycle\boot();
-    $cfg = $c->config();
-    $i18n = $c->i18n();
-    $history = $c->history();
-} catch (\Throwable $e) {
-    error_log('Dynamix File Recycle Bin browser bootstrap failed: ' . $e->getMessage());
-    ?>
-    <div class="notice red">
-        <span class="icon-alert"></span>
-        Recycle Bin could not load: <?= htmlspecialchars($e->getMessage(), ENT_QUOTES) ?>
-    </div>
-    <?php
-    return;
+// Like the settings page, this route renders before storage services start.
+// Recycle data is loaded through api.php so an offline volume or SQLite error
+// becomes an inline notice instead of an empty Unraid page.
+$recycleBinPluginDir = '/usr/local/emhttp/plugins/dynamix.file.recycle';
+require_once $recycleBinPluginDir . '/include/I18n.php';
+$recycleBinI18n = new \DynamixFileRecycle\I18n($recycleBinPluginDir . '/languages', 'auto');
+$recycleBinCatalog = [];
+foreach ([
+    'title' => 'bin.title',
+    'refresh' => 'bin.refresh',
+    'settings' => 'bin.settings',
+    'loading' => 'bin.loading',
+    'loadFailed' => 'bin.load_failed',
+    'activeItems' => 'bin.active_items',
+    'records' => 'bin.records',
+    'historyOn' => 'bin.history_on',
+    'historyOff' => 'bin.history_off',
+    'state' => 'bin.state',
+    'name' => 'bin.name',
+    'originalPath' => 'bin.original_path',
+    'volume' => 'bin.volume',
+    'size' => 'bin.size',
+    'deletedAt' => 'bin.deleted_at',
+    'actions' => 'bin.actions',
+    'empty' => 'bin.empty',
+    'active' => 'bin.active',
+    'restored' => 'bin.restored',
+    'purged' => 'bin.purged',
+    'pending' => 'bin.pending',
+    'restoring' => 'bin.restoring',
+    'purging' => 'bin.purging',
+    'directory' => 'bin.directory',
+    'restore' => 'bin.restore',
+    'purge' => 'bin.purge',
+    'managementDisabled' => 'bin.management_disabled',
+    'missing' => 'bin.missing',
+    'confirmRestore' => 'bin.confirm_restore',
+    'confirmPurge' => 'bin.confirm_purge',
+    'restoreDone' => 'bin.restore_done',
+    'purgeDone' => 'bin.purge_done',
+    'note' => 'bin.note',
+] as $recycleBinKey => $recycleBinTranslationKey) {
+    $recycleBinCatalog[$recycleBinKey] = $recycleBinI18n->t($recycleBinTranslationKey);
 }
-
-$csrf = '';
-if (isset($var) && is_array($var) && !empty($var['csrf_token'])) {
-    $csrf = (string) $var['csrf_token'];
-}
-if ($csrf === '') {
-    $varIni = '/usr/local/emhttp/state/var.ini';
-    if (is_file($varIni)) {
-        $parsed = @parse_ini_string((string) file_get_contents($varIni));
-        if (is_array($parsed) && !empty($parsed['csrf_token'])) {
-            $csrf = (string) $parsed['csrf_token'];
-        }
-    }
-}
-
-$showHistory = $cfg->getHistoryEnabled();
-$rows = [];
-$activeCount = 0;
-$totalSize = 0;
-$loadError = null;
-try {
-    $rows = $showHistory ? $history->listAll(null, 1000, 0) : $history->listActive(null, 1000, 0);
-    $activeCount = $history->countActive();
-    $totalSize = $history->totalActiveSize();
-} catch (\Throwable $e) {
-    $loadError = $e->getMessage();
-    $c->logger()->error('recycle_bin_load', '', $loadError);
-}
-$apiBase = '/plugins/dynamix.file.recycle/api.php';
-
-$pick = function (string $en, string $zh) use ($i18n): string {
-    return $i18n->lang() === 'zh_CN' ? $zh : $en;
-};
-$enZh = function (string $en, string $zh) use ($pick): string {
-    return htmlspecialchars($pick($en, $zh), ENT_QUOTES);
-};
-$stateLabel = [
-    'active'   => $pick('Active', '当前'),
-    'restored' => $pick('Restored', '已还原'),
-    'purged'   => $pick('Purged', '已清理'),
-    'pending'  => $pick('Recovering', '恢复中'),
-    'restoring'=> $pick('Restoring', '正在还原'),
-    'purging'  => $pick('Purging', '正在清理'),
+$recycleBinVar = $var ?? @parse_ini_file('/var/local/emhttp/var.ini') ?: [];
+$recycleBinAssetVersion = is_file($recycleBinPluginDir . '/VERSION')
+    ? trim((string) file_get_contents($recycleBinPluginDir . '/VERSION')) : 'dev';
+$recycleBinRuntime = [
+    'apiUrl' => '/plugins/dynamix.file.recycle/api.php',
+    'csrfToken' => (string) ($recycleBinVar['csrf_token'] ?? ''),
+    'settingsUrl' => '/Settings/DynamixFileRecycle',
+    'i18n' => $recycleBinCatalog,
 ];
 ?>
-<div class="recycle-bin">
-<h2><?= $enZh('Recycle Bin', '回收站') ?></h2>
-<?php if ($loadError !== null): ?>
-<div class="notice red"><span class="icon-alert"></span> <?= $enZh('Recycle Bin data could not be loaded: ', '回收站数据无法读取：') ?><?= htmlspecialchars($loadError, ENT_QUOTES) ?></div>
-<?php endif; ?>
-<p class="hint">
-    <?= count($rows) ?> <?= $showHistory ? $enZh('historical records', '条历史记录') : $enZh('active records', '条当前记录') ?>
-    &nbsp;|&nbsp;
-    <?= $activeCount ?> <?= $enZh('active items', '个当前项目') ?>, <?= number_format($totalSize) ?> <?= $enZh('bytes', '字节') ?>
-    &nbsp;|&nbsp;
-    <?= $showHistory ? $enZh('history on', '历史记录已启用') : $enZh('history off', '历史记录已关闭') ?>
-</p>
+<link rel="stylesheet" href="<?autov('/plugins/dynamix.file.recycle/javascript/recycle-bin.css')?>&amp;plugin=<?=rawurlencode($recycleBinAssetVersion)?>">
 
-<form id="recycle-batch-form" method="post" action="<?= htmlspecialchars($apiBase, ENT_QUOTES) ?>">
-    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES) ?>">
-    <table class="settings" id="recycle-table">
-        <thead>
+<div id="recycle-bin" class="recycle-bin">
+  <div id="recycle-bin-notice" class="recycle-bin-notice" role="status" aria-live="polite"></div>
+
+  <div class="recycle-bin-toolbar">
+    <button type="button" id="recycle-bin-refresh"><i class="fa fa-refresh" aria-hidden="true"></i> <span data-i18n="refresh">Refresh</span></button>
+    <button type="button" id="recycle-bin-settings"><i class="fa fa-cog" aria-hidden="true"></i> <span data-i18n="settings">Settings</span></button>
+    <span id="recycle-bin-summary" class="hint"></span>
+  </div>
+
+  <div class="recycle-bin-table-wrap">
+    <table id="recycle-bin-table">
+      <thead>
         <tr>
-            <th><?= $enZh('State', '状态') ?></th>
-            <th><?= $enZh('Name', '名称') ?></th>
-            <th><?= $enZh('Original path', '原始路径') ?></th>
-            <th><?= $enZh('Volume', '卷') ?></th>
-            <th><?= $enZh('Size', '大小') ?></th>
-            <th><?= $enZh('Deleted at', '删除时间') ?></th>
-            <th><?= $enZh('Actions', '操作') ?></th>
+          <th data-i18n="state">State</th>
+          <th data-i18n="name">Name</th>
+          <th data-i18n="originalPath">Original path</th>
+          <th data-i18n="volume">Volume</th>
+          <th data-i18n="size">Size</th>
+          <th data-i18n="deletedAt">Deleted at</th>
+          <th data-i18n="actions">Actions</th>
         </tr>
-        </thead>
-        <tbody>
-        <?php if (!$rows): ?>
-        <tr><td colspan="7" class="empty"><?= $cfg->getHistoryEnabled() ? $enZh('No records', '暂无记录') : $enZh('Recycle bin is empty', '回收站为空') ?></td></tr>
-        <?php else: foreach ($rows as $row): ?>
-            <?php
-                $name = basename($row['original_path']);
-                $recycleExists = is_string($row['recycle_path']) && @file_exists($row['recycle_path']);
-                $managementEnabled = $cfg->isVolumeAllowed((string) $row['volume']);
-                $canAct = $row['state'] === 'active' && $managementEnabled;
-            ?>
-            <tr data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>" data-state="<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>">
-                <td><span class="badge state-<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>"><?= htmlspecialchars($stateLabel[$row['state']] ?? $row['state'], ENT_QUOTES) ?></span></td>
-                <td title="<?= htmlspecialchars($row['recycle_path'], ENT_QUOTES) ?>">
-                    <?= htmlspecialchars($name, ENT_QUOTES) ?>
-                    <?php if ((int) $row['is_dir'] === 1): ?><span class="hint">(<?= $enZh('directory', '目录') ?>)</span><?php endif; ?>
-                </td>
-                <td><code><?= htmlspecialchars($row['original_path'], ENT_QUOTES) ?></code></td>
-                <td><code><?= htmlspecialchars($row['volume'], ENT_QUOTES) ?></code></td>
-                <td><?= number_format((int) $row['size']) ?></td>
-                <td><?= htmlspecialchars(date('Y-m-d H:i:s', (int) $row['deleted_at']), ENT_QUOTES) ?></td>
-                <td class="col-actions">
-                    <?php if ($canAct && $recycleExists): ?>
-                    <button type="button" class="btn btn-restore" data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>"><?= $enZh('Restore', '还原') ?></button>
-                    <button type="button" class="btn btn-purge"  data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>"><?= $enZh('Purge', '永久删除') ?></button>
-                    <?php elseif (!$managementEnabled && $row['state'] === 'active'): ?>
-                    <span class="hint"><?= $enZh('management disabled', '管理已关闭') ?></span>
-                    <?php elseif (!$recycleExists && $canAct): ?>
-                    <span class="hint"><?= $enZh('missing', '缺失') ?></span>
-                    <?php else: ?>
-                    <span class="hint"><?= htmlspecialchars($row['purged_reason'] ?? '', ENT_QUOTES) ?></span>
-                    <?php endif; ?>
-                </td>
-            </tr>
-        <?php endforeach; endif; ?>
-        </tbody>
+      </thead>
+      <tbody id="recycle-bin-body">
+        <tr><td colspan="7" class="recycle-bin-empty" data-i18n="loading">Loading recycle records...</td></tr>
+      </tbody>
     </table>
-</form>
+  </div>
 
-<p class="hint">
-    <?php if ($i18n->lang() === 'zh_CN'): ?>
-        说明：此页面只显示 SQLite 历史中的条目。手动放入 <code>.RecycleBin</code> 的文件不会显示。
-    <?php else: ?>
-        Note: this page lists only entries tracked in the SQLite history. Files
-        dropped into <code>.RecycleBin</code> by hand are not shown here.
-    <?php endif; ?>
-</p>
+  <p class="hint recycle-bin-note" data-i18n="note">Only entries tracked in the per-volume SQLite databases are shown.</p>
 </div>
 
-<style>
-.recycle-bin table.settings{ width: 100%; border-collapse: collapse; }
-.recycle-bin table.settings th, .recycle-bin table.settings td{ padding: 6px 10px; border-bottom: 1px solid var(--table-row-line, #333); text-align: left; vertical-align: middle; }
-.recycle-bin table.settings th{ background: var(--table-header-bg, #2a2a2a); }
-.recycle-bin .col-actions{ white-space: nowrap; }
-.recycle-bin .badge{ padding: 1px 6px; border-radius: 3px; font-size: 11px; }
-.recycle-bin .state-active{ background: #2d6a2d; color: #fff; }
-.recycle-bin .state-restored{ background: #1f6feb; color: #fff; }
-.recycle-bin .state-purged{ background: #444; color: #ccc; }
-.recycle-bin .hint{ color: var(--hint-text, #888); font-size: 12px; }
-.recycle-bin code{ background: rgba(127,127,127,.15); padding: 1px 4px; border-radius: 3px; }
-.recycle-bin .empty{ text-align: center; padding: 24px; color: var(--hint-text, #888); }
-</style>
-
 <script>
-(function () {
-    var API = <?= json_encode($apiBase, JSON_UNESCAPED_SLASHES) ?>;
-    var CSRF = <?= json_encode($csrf, JSON_UNESCAPED_SLASHES) ?>;
-    var CONFIRM_RESTORE = <?= json_encode($pick('Restore this item?', '还原此项？'), JSON_UNESCAPED_UNICODE) ?>;
-    var CONFIRM_PURGE = <?= json_encode($pick('Permanently delete? This cannot be undone.', '永久删除？此操作不可撤销。'), JSON_UNESCAPED_UNICODE) ?>;
-
-    function post(action, payload) {
-        var body = new URLSearchParams();
-        body.append('action', action);
-        for (var k in payload) body.append(k, payload[k]);
-        if (CSRF) body.append('csrf_token', CSRF);
-        return fetch(API, {
-            method: 'POST',
-            credentials: 'same-origin',
-            cache: 'no-store',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-            body: body.toString()
-        }).then(function (r) {
-            return r.json().then(function (json) {
-                if (!r.ok || !json || json.ok !== true) {
-                    throw new Error((json && (json.error || json.message)) || ('HTTP ' + r.status));
-                }
-                return json;
-            });
-        });
-    }
-
-    function refresh() { window.location.reload(); }
-
-    document.addEventListener('click', function (e) {
-        var restoreBtn = e.target.closest && e.target.closest('.btn-restore');
-        var purgeBtn   = e.target.closest && e.target.closest('.btn-purge');
-        if (restoreBtn) {
-            e.preventDefault();
-            var id = restoreBtn.getAttribute('data-id');
-            if (!confirm(CONFIRM_RESTORE)) return;
-            post('restore', { id: id }).then(refresh).catch(function (err) { alert(err); });
-        } else if (purgeBtn) {
-            e.preventDefault();
-            var id = purgeBtn.getAttribute('data-id');
-            if (!confirm(CONFIRM_PURGE)) return;
-            post('purge', { id: id }).then(refresh).catch(function (err) { alert(err); });
-        }
-    });
-
-})();
+window.DynamixFileRecycleBinRuntime = Object.freeze(<?=json_encode($recycleBinRuntime, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>);
 </script>
+<script src="<?autov('/plugins/dynamix.file.recycle/javascript/recycle-bin.js')?>&amp;plugin=<?=rawurlencode($recycleBinAssetVersion)?>"></script>

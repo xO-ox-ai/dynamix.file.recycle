@@ -286,6 +286,33 @@ final class History
         return $count;
     }
 
+    /** Delete operation-event logs from every online history shard. */
+    public function clearEvents(): int
+    {
+        $count = 0;
+        foreach ($this->existingVolumes() as $volume) {
+            $pdo = $this->pdoForVolume($volume, false);
+            if ($pdo === null) continue;
+            $count += $pdo->exec('DELETE FROM events');
+        }
+        return $count;
+    }
+
+    /**
+     * Delete audit-only item rows. Active and transitional records are kept so
+     * no recoverable content becomes detached from its database identity.
+     */
+    public function clearInactiveHistory(): int
+    {
+        $count = 0;
+        foreach ($this->existingVolumes() as $volume) {
+            $pdo = $this->pdoForVolume($volume, false);
+            if ($pdo === null) continue;
+            $count += $pdo->exec("DELETE FROM items WHERE state IN ('restored','purged')");
+        }
+        return $count;
+    }
+
     public function recordEvent(string $volume, string $level, string $action, string $path, string $message): void
     {
         try {

@@ -1,8 +1,8 @@
 ; Default configuration for Dynamix File Recycle Bin.
 ; This file is shipped with the plugin and copied to
 ; /boot/config/plugins/dynamix.file.recycle/dynamix.file.recycle.cfg on first
-; install. Users edit their copy via Settings -> Dynamix File Recycle Bin or
-; Tools -> Disk Utilities -> Dynamix File Recycle Bin.
+; install. Users edit their copy via Settings -> User Programs -> Dynamix File
+; Recycle Bin. Tools -> Disk Utilities -> Recycle Bin shows recycle details.
 
 [global]
 ; Master switch. When 0, the "Move to Recycle Bin" button is hidden and the

@@ -25,6 +25,7 @@ jobs:
           bash -n tools/build.sh source/dynamix.file.recycle/scripts/*.sh source/dynamix.file.recycle/scripts/recycle-maintain
           node --check source/dynamix.file.recycle/javascript/recycle.js
           node --check source/dynamix.file.recycle/javascript/settings.js
+          node --check source/dynamix.file.recycle/javascript/recycle-bin.js
       - name: Build package
         run: PLUGIN_VERSION="$(tr -d '[:space:]' < VERSION)" tools/build.sh
       - name: Verify package root

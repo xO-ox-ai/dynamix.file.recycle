@@ -92,4 +92,12 @@ for ($i = 0; $i < 100; $i++) {
     checkSafety(History::validId(History::newId()), 'Generated item UUID is invalid');
 }
 
+$testLog = sys_get_temp_dir() . '/dynamix-file-recycle-clear-' . bin2hex(random_bytes(4)) . '.log';
+$testAudit = $testLog . '.audit';
+$clearLogger = new Logger($testLog, $testAudit, 'DEBUG', 1);
+$clearLogger->error('clear_test', '/mnt/disk1/test', 'test entry');
+checkSafety(is_file($testLog) && is_file($testAudit), 'Logger did not create both test logs');
+checkSafety($clearLogger->clear() === 2, 'Logger clear did not report both files');
+checkSafety(!is_file($testLog) && !is_file($testAudit), 'Logger clear left a test log behind');
+
 echo "Safety unit tests passed.\n";

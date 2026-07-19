@@ -9,6 +9,22 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19g] - 2026-07-19
+
+### Added
+- Added a static API-backed Recycle Bin details page with restore and permanent
+  delete actions under **Tools -> Disk Utilities**.
+- Added safe controls to clear diagnostic/event logs and to remove only
+  restored or purged history rows.
+- Added explanations for retention, capacity, SQLite VACUUM and metadata
+  preservation settings, plus hierarchical array/ZFS volume selection.
+
+### Changed
+- Moved the settings tile into Unraid's **User Programs** section and reserved
+  the Disk Utilities tile for recycle details.
+- Keyed DFM assets by plugin version and remove legacy cached row controls on
+  startup, while retaining the native batch action after Delete.
+
 ## [2026.07.19f] - 2026-07-19
 
 ### Changed

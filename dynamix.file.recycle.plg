@@ -17,8 +17,8 @@
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "dynamix.file.recycle">
   <!ENTITY author    "xO-ox-ai">
-  <!ENTITY version   "2026.07.19f">
-  <!ENTITY launch    "Tools/DynamixFileRecycle">
+  <!ENTITY version   "2026.07.19g">
+  <!ENTITY launch    "Settings/DynamixFileRecycle">
   <!ENTITY repo      "https://github.com/xO-ox-ai/dynamix.file.recycle">
   <!ENTITY pluginURL "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg">
   <!ENTITY supportURL "&repo;/issues">
@@ -53,6 +53,14 @@ supported disk or ZFS dataset.
 </DESCRIPTION>
 <CHANGES>
 <![CDATA[
+### 2026.07.19g
+- Split Settings (User Programs) from the API-backed Recycle Bin details page
+  (Tools -> Disk Utilities), eliminating blank detail pages.
+- Added safe log and inactive-history cleanup, detailed option explanations,
+  and hierarchical array/ZFS volume selection.
+- Added plugin-version cache keys and legacy row-control cleanup while keeping
+  the native batch Recycle action immediately after Delete.
+
 ### 2026.07.19f
 - Rebuilt Settings as a static USB Guardian-style shell backed by api.php.
 - Fixed the API boot() function import that prevented all actions from starting.
@@ -100,7 +108,7 @@ supported disk or ZFS dataset.
 </CHANGES>
 <FILE Name="/boot/config/plugins/&name;/&packageName;">
   <URL>&packageURL;</URL>
-  <SHA256>463d5a7e361971e88d36c77c0da4d38438f8a2c0ec57761611b5b1bc4959398d</SHA256>
+  <SHA256>f8590adc04ccd51abae9b6dee8bd52c7916781d4695c9052a22e431e6f66555f</SHA256>
 </FILE>
 <!--
   Installation / registration script. Runs once after the .txz is downloaded
@@ -114,8 +122,8 @@ supported disk or ZFS dataset.
 set -euo pipefail
 PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
 CFG_DIR="/boot/config/plugins/dynamix.file.recycle"
-PACKAGE="$CFG_DIR/dynamix.file.recycle-2026.07.19f-x86_64-1.txz"
-EXPECTED_SHA256="463d5a7e361971e88d36c77c0da4d38438f8a2c0ec57761611b5b1bc4959398d"
+PACKAGE="$CFG_DIR/dynamix.file.recycle-2026.07.19g-x86_64-1.txz"
+EXPECTED_SHA256="f8590adc04ccd51abae9b6dee8bd52c7916781d4695c9052a22e431e6f66555f"
 
 install -d -m 0700 "$CFG_DIR"
 [[ -f "$PACKAGE" ]] || { echo "Package is missing: $PACKAGE"; exit 1; }
@@ -145,7 +153,7 @@ PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
 HELPER="$PLUGIN_DIR/scripts/remove.sh"
 [[ -x "$HELPER" ]] || { echo "Removal refused: lifecycle helper is missing"; exit 1; }
 "$HELPER"
-/sbin/removepkg "dynamix.file.recycle-2026.07.19f-x86_64-1" >/dev/null 2>&1 || true
+/sbin/removepkg "dynamix.file.recycle-2026.07.19g-x86_64-1" >/dev/null 2>&1 || true
 /bin/rm -rf -- "$PLUGIN_DIR"
 /bin/rm -f -- /boot/config/plugins/dynamix.file.recycle/dynamix.file.recycle-*-x86_64-1.txz
   ]]></INLINE>

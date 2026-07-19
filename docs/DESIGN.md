@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19f` architecture and its conservative
+This document describes the `2026.07.19g` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -38,6 +38,15 @@ the current checkbox selection. No per-row destructive control is added.
 Selected paths come from the official `check_N` to `row_N[data][type]`
 mapping. The plugin validates all selected paths before showing one batch
 confirmation. Mutations then run sequentially to avoid SQLite lock contention.
+
+DFM asset URLs include the plugin version in addition to Unraid's `autov`
+value. The current script also removes legacy per-row controls, so an upgrade
+cannot leave an old cached trash icon beside item names.
+
+Settings and recycle details are separate static page shells. Settings is
+registered under User Programs (`Menu="Settings"`); recycle details is under
+Tools -> Disk Utilities. Both load storage state through `api.php` after the
+page has rendered, so backend failures remain visible as inline errors.
 
 ## 3. Request flow
 

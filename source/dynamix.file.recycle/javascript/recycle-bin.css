@@ -1,0 +1,60 @@
+.recycle-bin { max-width: 100%; }
+
+.recycle-bin-notice {
+    display: none;
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    border-left: 4px solid #999;
+}
+.recycle-bin-notice.is-visible { display: block; }
+.recycle-bin-notice.is-progress { border-color: #ff8a3d; }
+.recycle-bin-notice.is-success { border-color: #2fa85b; }
+.recycle-bin-notice.is-error { border-color: #e34b4b; color: #ff8b8b; }
+
+.recycle-bin-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 14px;
+}
+.recycle-bin-toolbar .hint { margin-left: auto; }
+.recycle-bin .hint { color: var(--hint-text, #999); font-size: 12px; }
+
+.recycle-bin-table-wrap { overflow-x: auto; }
+.recycle-bin table { width: 100%; border-collapse: collapse; }
+.recycle-bin th,
+.recycle-bin td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--table-row-line, #333);
+    text-align: left;
+    vertical-align: middle;
+}
+.recycle-bin th { background: var(--table-header-bg, #2a2a2a); }
+.recycle-bin-path { max-width: 420px; overflow-wrap: anywhere; font-family: monospace; }
+.recycle-bin-actions { min-width: 210px; white-space: nowrap; }
+.recycle-bin-action { margin: 2px 6px 2px 0; }
+.recycle-bin-purge { border-color: #d9534f; }
+.recycle-bin-directory { display: block; margin-top: 3px; }
+.recycle-bin-empty { padding: 28px !important; text-align: center !important; color: var(--hint-text, #999); }
+.recycle-bin-note { margin-top: 14px; }
+
+.recycle-bin-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    white-space: nowrap;
+    background: #555;
+    color: #fff;
+}
+.recycle-bin-badge.is-active { background: #2f7d3c; }
+.recycle-bin-badge.is-restored { background: #2469a0; }
+.recycle-bin-badge.is-purged { background: #555; color: #ddd; }
+.recycle-bin-badge.is-pending,
+.recycle-bin-badge.is-restoring,
+.recycle-bin-badge.is-purging { background: #9a6700; }
+
+@media (max-width: 720px) {
+    .recycle-bin-toolbar .hint { flex-basis: 100%; margin-left: 0; }
+}

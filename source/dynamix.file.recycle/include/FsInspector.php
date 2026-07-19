@@ -239,6 +239,38 @@ final class FsInspector
         return $approved;
     }
 
+    /**
+     * Return stable display metadata without weakening the volume checks.
+     * Array disks are grouped together; ZFS datasets retain their native
+     * pool/dataset hierarchy even when mountpoint names differ.
+     *
+     * @return array{kind:string,label:string,hierarchy:list<string>}|null
+     */
+    public function volumeDisplayInfo(string $volume): ?array
+    {
+        $canonical = $this->normalise($volume);
+        if ($canonical === null || !$this->isApprovedVolumeRoot($canonical)) {
+            return null;
+        }
+        if (preg_match('#^/mnt/disk(\d+)$#', $canonical, $match)) {
+            return [
+                'kind' => 'array',
+                'label' => 'Disk ' . $match[1],
+                'hierarchy' => ['Disk ' . $match[1]],
+            ];
+        }
+        $dataset = $this->zfsMounts()[$canonical] ?? '';
+        if ($dataset === '') {
+            return null;
+        }
+        $hierarchy = array_values(array_filter(explode('/', $dataset), 'strlen'));
+        return [
+            'kind' => 'zfs',
+            'label' => end($hierarchy) ?: $dataset,
+            'hierarchy' => $hierarchy,
+        ];
+    }
+
     public function isExactVolumeRoot(string $path): bool
     {
         $canonical = $this->normalise($path);

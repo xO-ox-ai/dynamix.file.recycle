@@ -60,9 +60,10 @@ https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.fil
 ```
 
 The Plugin Manager downloads the versioned package, verifies its SHA-256
-digest and runs the install hook. Open **Settings -> Dynamix File Recycle Bin**
-or **Tools -> Disk Utilities -> Dynamix File Recycle Bin** after installation
-to review the master switch and maintenance policy.
+digest and runs the install hook. Open **Settings -> User Programs -> Dynamix
+File Recycle Bin** to review the master switch and maintenance policy. Open
+**Tools -> Disk Utilities -> Recycle Bin** to view, restore or permanently
+delete tracked recycle items.
 
 Command-line installation uses the same official Plugin Manager path:
 
@@ -78,13 +79,15 @@ Command-line installation uses the same official Plugin Manager path:
 3. Click **Recycle** immediately to the right of the native **Delete** button.
 4. The server checks every selected path, mount, filesystem and backing device.
 5. Confirm only after every check succeeds.
-6. Open **Tools -> Disk Utilities -> Dynamix File Recycle Bin**, then use
-   **Open Recycle Bin** to restore or permanently purge tracked items.
+6. Open **Tools -> Disk Utilities -> Recycle Bin** to restore or permanently
+   purge tracked items.
 
 The Settings page lists every volume that currently passes the backend safety
 checks. All are selected on first install. Saving converts that initial policy
 to an explicit allowlist: unchecked volumes remain visible in history, but new
 recycle, restore, purge and automatic maintenance actions are blocked there.
+Array disks and ZFS datasets are displayed as separate trees; ZFS entries keep
+their native pool/dataset hierarchy.
 
 Example layout:
 

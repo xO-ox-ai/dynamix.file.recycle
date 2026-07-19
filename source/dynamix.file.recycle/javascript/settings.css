@@ -54,18 +54,29 @@
 }
 
 .recycle-volume-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 8px 16px;
     margin-bottom: 8px;
 }
 
+.recycle-volume-group { margin: 0 0 14px; }
+.recycle-volume-group h3 { margin: 0 0 6px; font-size: 14px; }
+.recycle-volume-tree { margin: 0; padding-left: 20px; list-style: none; }
+.recycle-volume-tree .recycle-volume-tree {
+    margin-left: 7px;
+    border-left: 1px solid var(--table-row-line, #444);
+}
+.recycle-volume-tree li { margin: 4px 0; }
+.recycle-volume-branch { display: inline-block; padding: 3px 0; font-weight: 600; }
+
 .recycle-volume-option {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-height: 28px;
 }
+
+.recycle-volume-option .hint { flex-basis: 100%; margin: 0 0 0 26px; }
+.recycle-volume-name { font-weight: 500; }
 
 .recycle-settings-actions {
     display: flex;
@@ -73,6 +84,9 @@
     gap: 12px;
     padding: 18px 0;
 }
+
+.recycle-settings-actions .recycle-danger { border-color: #d9534f; }
+.recycle-action-help { margin: 0 0 5px; }
 
 @media (max-width: 720px) {
     .recycle-settings-section dl { grid-template-columns: 1fr; gap: 6px; }

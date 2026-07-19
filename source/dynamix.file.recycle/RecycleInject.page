@@ -179,8 +179,8 @@ $runtimeJson = json_encode(
         | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
 );
 ?>
-<link rel="stylesheet" href="<?autov('/plugins/dynamix.file.recycle/javascript/recycle.css')?>" data-recycle-asset="css">
+<link rel="stylesheet" href="<?autov('/plugins/dynamix.file.recycle/javascript/recycle.css')?>&amp;plugin=<?=rawurlencode($version)?>" data-recycle-asset="css">
 <script>
 window.__recycleRuntime = <?= $runtimeJson ?>;
 </script>
-<script src="<?autov('/plugins/dynamix.file.recycle/javascript/recycle.js')?>" data-recycle-asset="js"></script>
+<script src="<?autov('/plugins/dynamix.file.recycle/javascript/recycle.js')?>&amp;plugin=<?=rawurlencode($version)?>" data-recycle-asset="js"></script>

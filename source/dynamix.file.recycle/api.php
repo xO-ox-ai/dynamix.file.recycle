@@ -21,6 +21,8 @@
  *   action=status                              summary stats
  *   action=config_get                          read the cfg (admin)
  *   action=config_save                         write the cfg (admin)
+ *   action=clear_logs                          clear file and SQLite event logs
+ *   action=clear_history                       clear restored/purged audit rows
  *   action=maintain_now                        run maintenance synchronously (admin)
  *
  * All responses are JSON.
@@ -92,7 +94,7 @@ try {
     $sec = $c->security();
     $logger = $c->logger();
     $action = trim((string) ($_POST['action'] ?? ''));
-    if (preg_match('/\A(?:inspect|recycle|restore|purge|empty|list|status|config_get|config_save|maintain_now)\z/', $action) !== 1) {
+    if (preg_match('/\A(?:inspect|recycle|restore|purge|empty|list|status|config_get|config_save|clear_logs|clear_history|maintain_now)\z/', $action) !== 1) {
         fail('Unknown action.', 400, 'unknown_action');
     }
     // For all mutating actions we require the plugin to be enabled.
@@ -160,11 +162,22 @@ try {
             } else {
                 $rows = $c->history()->listActive($volume, $limit, $offset);
             }
+            foreach ($rows as &$row) {
+                $row['recycle_exists'] = is_string($row['recycle_path'] ?? null)
+                    && (file_exists($row['recycle_path']) || is_link($row['recycle_path']));
+                $row['management_enabled'] = $cfg->isVolumeAllowed((string) ($row['volume'] ?? ''));
+            }
+            unset($row);
             respond([
                 'ok' => true,
                 'items' => $rows,
                 'count' => count($rows),
                 'state_filter' => $state,
+                'history_enabled' => $cfg->getHistoryEnabled(),
+                'totals' => [
+                    'items' => $c->history()->countActive(),
+                    'size' => $c->history()->totalActiveSize(),
+                ],
             ]);
         }
 
@@ -202,9 +215,13 @@ try {
             $supportedVolumes = [];
             foreach ($c->fs()->supportedVolumes() as $volume) {
                 $resolved = $c->fs()->resolveVolume($volume);
+                $display = $c->fs()->volumeDisplayInfo($volume);
                 $supportedVolumes[] = [
                     'path' => $volume,
                     'fs' => $resolved['fs'] ?? 'unknown',
+                    'kind' => $display['kind'] ?? 'unknown',
+                    'label' => $display['label'] ?? basename($volume),
+                    'hierarchy' => $display['hierarchy'] ?? [basename($volume)],
                 ];
             }
             respond([
@@ -241,6 +258,20 @@ try {
             $cfg->mergeAndSave($patch);
             $c->scheduler()->sync();
             respond(['ok' => true]);
+        }
+
+        case 'clear_logs': {
+            $result = $c->operationLock()->run(function () use ($c, $logger): array {
+                $events = $c->history()->clearEvents();
+                $files = $logger->clear();
+                return ['files' => $files, 'events' => $events];
+            });
+            respond(['ok' => true, 'cleared' => $result]);
+        }
+
+        case 'clear_history': {
+            $count = $c->operationLock()->run(fn(): int => $c->history()->clearInactiveHistory());
+            respond(['ok' => true, 'cleared' => $count]);
         }
 
         case 'maintain_now': {

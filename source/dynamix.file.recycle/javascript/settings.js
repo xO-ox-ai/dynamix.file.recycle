@@ -6,7 +6,9 @@
     var notice = document.getElementById('recycle-settings-notice');
     var volumeList = document.getElementById('recycle-settings-volumes');
     var openBin = document.getElementById('recycle-open-bin');
-    if (!runtime || !form || !notice || !volumeList || !openBin) return;
+    var clearLogs = document.getElementById('recycle-clear-logs');
+    var clearHistory = document.getElementById('recycle-clear-history');
+    if (!runtime || !form || !notice || !volumeList || !openBin || !clearLogs || !clearHistory) return;
 
     var catalog = runtime.i18n && typeof runtime.i18n === 'object' ? runtime.i18n : {};
     function t(key, fallback) { return typeof catalog[key] === 'string' ? catalog[key] : fallback; }
@@ -78,7 +80,13 @@
             return;
         }
         var allowed = selectedVolumePolicy(allowedRaw);
+        var groups = { array: [], zfs: [], unknown: [] };
         volumes.forEach(function (volume) {
+            var kind = Object.prototype.hasOwnProperty.call(groups, volume.kind) ? volume.kind : 'unknown';
+            groups[kind].push(volume);
+        });
+
+        function appendVolumeControl(parent, volume, labelText) {
             var label = document.createElement('label');
             label.className = 'recycle-volume-option';
             var input = document.createElement('input');
@@ -86,14 +94,64 @@
             input.name = 'allowed_volumes';
             input.value = volume.path;
             input.checked = allowed === null || allowed.indexOf(volume.path) >= 0;
-            var path = document.createElement('code');
-            path.textContent = volume.path;
+            var name = document.createElement('span');
+            name.className = 'recycle-volume-name';
+            name.textContent = labelText || volume.label || volume.path;
             var fs = document.createElement('span');
             fs.className = 'hint';
-            fs.textContent = String(volume.fs || 'unknown').toUpperCase();
-            label.append(input, path, fs);
-            volumeList.appendChild(label);
-        });
+            fs.textContent = volume.path + ' - ' + String(volume.fs || 'unknown').toUpperCase();
+            label.append(input, name, fs);
+            parent.appendChild(label);
+        }
+
+        function renderGroup(kind, entries) {
+            if (entries.length === 0) return;
+            var group = document.createElement('section');
+            group.className = 'recycle-volume-group';
+            var heading = document.createElement('h3');
+            heading.textContent = kind === 'array'
+                ? t('arrayDisks', 'Array disks')
+                : (kind === 'zfs' ? t('zfsDatasets', 'ZFS datasets') : t('volumes', 'Volumes'));
+            group.appendChild(heading);
+
+            var root = { children: Object.create(null), volume: null };
+            entries.forEach(function (volume) {
+                var hierarchy = Array.isArray(volume.hierarchy) && volume.hierarchy.length
+                    ? volume.hierarchy : [volume.label || volume.path];
+                var node = root;
+                hierarchy.forEach(function (segment) {
+                    if (!node.children[segment]) node.children[segment] = { children: Object.create(null), volume: null };
+                    node = node.children[segment];
+                });
+                node.volume = volume;
+            });
+
+            function renderNodes(nodes) {
+                var list = document.createElement('ul');
+                list.className = 'recycle-volume-tree';
+                Object.keys(nodes).sort().forEach(function (segment) {
+                    var node = nodes[segment];
+                    var item = document.createElement('li');
+                    if (node.volume) appendVolumeControl(item, node.volume, segment);
+                    else {
+                        var branch = document.createElement('span');
+                        branch.className = 'recycle-volume-branch';
+                        branch.textContent = segment;
+                        item.appendChild(branch);
+                    }
+                    if (Object.keys(node.children).length) item.appendChild(renderNodes(node.children));
+                    list.appendChild(item);
+                });
+                return list;
+            }
+
+            group.appendChild(renderNodes(root.children));
+            volumeList.appendChild(group);
+        }
+
+        renderGroup('array', groups.array);
+        renderGroup('zfs', groups.zfs);
+        renderGroup('unknown', groups.unknown);
     }
 
     function populate(payload) {
@@ -177,5 +235,42 @@
     });
 
     openBin.addEventListener('click', function () { window.location.assign(runtime.recycleBinUrl); });
+
+    function runCleanup(button, action, confirmKey, confirmFallback, successKey, successFallback) {
+        if (!window.confirm(t(confirmKey, confirmFallback))) return;
+        button.disabled = true;
+        request(action).then(function (payload) {
+            var count = payload.cleared;
+            if (count && typeof count === 'object') count = Number(count.files || 0) + Number(count.events || 0);
+            showNotice('success', t(successKey, successFallback).replace('%d', String(Number(count || 0))));
+            return request('config_get');
+        }).then(populate).catch(function (error) {
+            showNotice('error', error.message);
+        }).finally(function () {
+            button.disabled = false;
+        });
+    }
+
+    clearLogs.addEventListener('click', function () {
+        runCleanup(
+            clearLogs,
+            'clear_logs',
+            'confirmClearLogs',
+            'Clear runtime, audit and operation-event logs?',
+            'logsCleared',
+            'Cleared %d log entries or files.'
+        );
+    });
+
+    clearHistory.addEventListener('click', function () {
+        runCleanup(
+            clearHistory,
+            'clear_history',
+            'confirmClearHistory',
+            'Clear restored and purged history? Active recycle items will be preserved.',
+            'historyCleared',
+            'Cleared %d historical records.'
+        );
+    });
     load();
 })();

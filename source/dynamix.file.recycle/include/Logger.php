@@ -56,6 +56,20 @@ final class Logger
         $this->writeAudit('AUDIT', $action, $path, $message);
     }
 
+    /** Remove volatile and persistent file logs, including rotated copies. */
+    public function clear(): int
+    {
+        $removed = 0;
+        foreach ([$this->file, $this->file . '.1', $this->auditFile, $this->auditFile . '.1'] as $file) {
+            if (!is_file($file)) continue;
+            if (!@unlink($file)) {
+                throw new \RuntimeException('Unable to remove log file: ' . $file, 500);
+            }
+            $removed++;
+        }
+        return $removed;
+    }
+
     private function write(string $level, string $action, string $path, string $message): void
     {
         if (self::LEVELS[$level] > $this->level) {

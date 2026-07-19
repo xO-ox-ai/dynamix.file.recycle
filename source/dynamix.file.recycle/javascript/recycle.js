@@ -14,6 +14,20 @@
     var toastEl = null;
     var toastTimer = 0;
 
+    function removeLegacyRowControls() {
+        var legacy = document.querySelectorAll('.recycle-slot, .recycle-action');
+        for (var index = 0; index < legacy.length; index++) {
+            var element = legacy[index];
+            var target = element.classList && element.classList.contains('recycle-slot')
+                ? element : element.parentNode;
+            if (target && target.classList && target.classList.contains('recycle-slot')) {
+                target.parentNode.removeChild(target);
+            } else if (element.parentNode) {
+                element.parentNode.removeChild(element);
+            }
+        }
+    }
+
     function t(key) {
         return RT.i18n && typeof RT.i18n[key] === 'string' ? RT.i18n[key] : key;
     }
@@ -190,6 +204,7 @@
     }
 
     function boot(retries) {
+        removeLegacyRowControls();
         if (installButton()) return;
         if (retries > 0) {
             setTimeout(function () { boot(retries - 1); }, 100);

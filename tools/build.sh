@@ -54,21 +54,38 @@ MD5="$(md5sum "$OUT_TXZ" | awk '{print $1}')"
 echo "    MD5 = $MD5"
 
 echo "==> Patching .plg"
-# Substitute the version and MD5 placeholders.
+# Substitute the version and MD5 placeholders. We write the patched copy to
+# build/ AND overwrite the in-repo .plg so what gets committed matches the
+# published release exactly.
 sed \
     -e "s|<!ENTITY version   \"[^\"]*\">|<!ENTITY version   \"$VERSION\">|g" \
     -e "s|<MD5>[^<]*</MD5>|<MD5>$MD5</MD5>|g" \
     "$ROOT/$PKG_NAME.plg" > "$OUT_PLG"
+cp -f "$OUT_PLG" "$ROOT/$PKG_NAME.plg"
 
-# Also update the version in plugins.json.
-python3 - <<PY
-import json, sys
+# Also update the version in plugins.json. Find a working Python: try `python`
+# first (the Windows Store `python3` stub is a no-op), then fall back.
+PY_BIN=""
+for cand in python python3 python2; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'print("ok")' >/dev/null 2>&1; then
+        PY_BIN="$cand"
+        break
+    fi
+done
+if [ -n "$PY_BIN" ]; then
+    "$PY_BIN" - <<PY
+import json
 p = "plugins.json"
 data = json.load(open(p, encoding="utf-8"))
 data["version"] = "$VERSION"
 data["last_update"] = "$(date +%F)"
-json.dump(data, open(p, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+with open(p, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, ensure_ascii=False)
+    fh.write("\n")
 PY
+else
+    echo "WARNING: no working python interpreter; plugins.json not updated" >&2
+fi
 
 echo
 echo "Done. Release artefacts:"

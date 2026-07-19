@@ -65,7 +65,7 @@ permanently.
 <FILE Name="/tmp/dynamix.file.recycle-&version;.txz">
   <URL>&package;</URL>
   <!-- MD5 placeholder; replaced by tools/build.sh at release time. -->
-  <MD5>00000000000000000000000000000000</MD5>
+  <MD5>dc43aed7a6eec51d41a5ed7ad70c65bd</MD5>
 </FILE>
 <!--
   Installation / registration script. Runs once after the .txz is downloaded

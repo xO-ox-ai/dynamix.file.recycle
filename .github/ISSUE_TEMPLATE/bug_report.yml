@@ -1,0 +1,83 @@
+name: 🐛 Bug report / Bug 上报
+description: Report something that's broken / 上报一个不工作的功能
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug! / 感谢你提交 bug！
+        For general chat please use the
+        [welcome thread](https://github.com/xO-ox-ai/dynamix.file.recycle/issues/1)
+        instead. / 普通讨论请到
+        [欢迎帖](https://github.com/xO-ox-ai/dynamix.file.recycle/issues/1)。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened / 现象
+      description: Also tell us what you expected to happen. / 也请说明你期望发生什么。
+      placeholder: |
+        e.g. "Clicked the recycle button, file disappeared but didn't show up
+        in the bin." / 例如："点了回收按钮，文件没了但回收站里没出现。"
+    validations:
+      required: true
+
+  - type: input
+    id: unraid-version
+    attributes:
+      label: Unraid version / Unraid 版本
+      placeholder: "e.g. 7.3.2"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version / 插件版本
+      placeholder: "2026.07.19a"
+      value: "2026.07.19a"
+    validations:
+      required: true
+
+  - type: input
+    id: filesystem
+    attributes:
+      label: Filesystem of the affected path / 受影响路径所在的文件系统
+      placeholder: "xfs / btrfs / zfs / ..."
+
+  - type: input
+    id: path
+    attributes:
+      label: Path you tried to recycle / 你尝试回收的路径
+      placeholder: "/mnt/disk1/Movies/foo.mkv"
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro steps / 复现步骤
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / 相关日志
+      description: |
+        Tail of
+        `/usr/local/emhttp/state/plugins/dynamix.file.recycle/dynamix.file.recycle.log`.
+        Also check the browser console (F12) for JS errors. Drag-and-drop a
+        screenshot if helpful.
+        附上日志最后 20 行；F12 浏览器控制台的 JS 错误也很有用。
+      render: shell
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of conduct
+      options:
+        - label: I agree to follow this project's [Code of Conduct](../blob/main/LICENSE)
+          required: true

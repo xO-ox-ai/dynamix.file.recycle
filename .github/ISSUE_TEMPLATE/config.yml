@@ -1,0 +1,16 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Feedback & general chat / 综合反馈与讨论
+    url: https://github.com/xO-ox-ai/dynamix.file.recycle/issues/1
+    about: |
+      For general questions, ideas, or anything that doesn't fit a bug or
+      feature request, comment on the pinned welcome thread.
+      / 普通问题、想法，或既不是 bug 也不是功能建议的内容，请到置顶的欢迎帖评论。
+  - name: 📖 Documentation / 文档
+    url: https://github.com/xO-ox-ai/dynamix.file.recycle#readme
+    about: |
+      Check the README (EN + 中文) and docs/DESIGN.md before opening an
+      issue. / 开 issue 前请先看看 README（中英双语）和 docs/DESIGN.md。
+  - name: 🚀 Releases / 版本发布
+    url: https://github.com/xO-ox-ai/dynamix.file.recycle/releases
+    about: All published versions and their changelogs. / 所有已发布版本及更新日志。

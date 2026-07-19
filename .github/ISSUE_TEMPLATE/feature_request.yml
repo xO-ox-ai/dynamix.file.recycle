@@ -1,0 +1,41 @@
+name: 💡 Feature request / 功能建议
+description: Suggest a new feature or improvement / 提一个新功能或改进
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem / 想解决的问题
+      description: What are you trying to do that the plugin currently can't? / 你想做什么，但插件现在做不到？
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: The solution you'd like / 你期望的解决方案
+      placeholder: "e.g. 'Add a button that...' / 例如：'增加一个按钮，使得...'"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 考虑过的其他方案
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area? / 属于哪个模块？
+      options:
+        - DFM button / DFM 按钮注入
+        - Recycle bin browser / 回收站浏览（Tools）
+        - Settings page / 设置页
+        - Maintenance / 维护（年龄/容量/日志）
+        - Restore / 还原
+        - History / 历史
+        - i18n / 双语
+        - API
+        - other / 其他
+    validations:
+      required: true

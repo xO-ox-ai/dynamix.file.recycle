@@ -70,6 +70,18 @@ final class Logger
         return $removed;
     }
 
+    /** Combined size of this plugin's file logs, including one rotation. */
+    public function sizeBytes(): int
+    {
+        $bytes = 0;
+        foreach ([$this->file, $this->file . '.1', $this->auditFile, $this->auditFile . '.1'] as $file) {
+            if (!is_file($file) || is_link($file)) continue;
+            $size = @filesize($file);
+            if ($size !== false) $bytes += (int) $size;
+        }
+        return $bytes;
+    }
+
     private function write(string $level, string $action, string $path, string $message): void
     {
         if (self::LEVELS[$level] > $this->level) {

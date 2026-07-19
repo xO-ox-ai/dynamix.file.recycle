@@ -54,6 +54,18 @@
         return ['1', 'true', 'yes', 'on'].indexOf(String(value || '').toLowerCase()) >= 0;
     }
 
+    function humanSize(bytes) {
+        var value = Math.max(0, Number(bytes || 0));
+        var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+        var unit = 0;
+        while (value >= 1024 && unit < units.length - 1) {
+            value /= 1024;
+            unit++;
+        }
+        var digits = unit === 0 ? 0 : (value >= 10 ? 1 : 2);
+        return value.toFixed(digits) + ' ' + units[unit];
+    }
+
     function setValue(name, value) {
         var input = form.elements.namedItem(name);
         if (!input) return;
@@ -179,6 +191,9 @@
         var totals = payload.totals || {};
         document.getElementById('recycle-settings-active-items').textContent =
             String(totals.items || 0) + ' (' + String(totals.size || 0) + ' ' + t('bytes', 'bytes') + ')';
+        document.getElementById('recycle-settings-log-size').textContent = humanSize(totals.log_bytes || 0);
+        document.getElementById('recycle-settings-clearable-history').textContent =
+            String(Number(totals.clearable_history || 0));
     }
 
     function configPayload() {

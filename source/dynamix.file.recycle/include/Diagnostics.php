@@ -121,7 +121,7 @@ final class Diagnostics
                     $entry['integrity_check'] = $pdo->query('PRAGMA integrity_check')->fetchColumn();
                     $entry['state_counts'] = $pdo->query('SELECT state,COUNT(*) AS count FROM items GROUP BY state')->fetchAll();
                     $entry['recent_items'] = $pdo->query(
-                        'SELECT id,volume,original_path,recycle_path,size,is_dir,deleted_at,state,purged_at,purged_reason,operation_target '
+                        'SELECT id,volume,original_path,display_name,recycle_path,size,is_dir,deleted_at,state,purged_at,purged_reason,operation_target '
                         . 'FROM items ORDER BY deleted_at DESC LIMIT 100'
                     )->fetchAll();
                 } catch (\Throwable $e) {

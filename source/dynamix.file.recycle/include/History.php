@@ -86,6 +86,18 @@ final class History
         if (!in_array('operation_target', $columnNames, true)) {
             $pdo->exec('ALTER TABLE items ADD COLUMN operation_target TEXT');
         }
+        if (!in_array('display_name', $columnNames, true)) {
+            $pdo->exec('ALTER TABLE items ADD COLUMN display_name TEXT');
+            $statement = $pdo->prepare('UPDATE items SET display_name=:name WHERE id=:id');
+            foreach ($pdo->query('SELECT id,original_path FROM items')->fetchAll() as $row) {
+                $statement->execute([
+                    ':name' => basename((string) $row['original_path']),
+                    ':id' => (string) $row['id'],
+                ]);
+            }
+        }
+        $pdo->exec('CREATE INDEX IF NOT EXISTS idx_items_display_name ON items(display_name)');
+        $columnNames = array_column($pdo->query('PRAGMA table_info(items)')->fetchAll(), 'name');
         $this->logger->debug(
             'history_schema_ready',
             $canonical,
@@ -103,10 +115,10 @@ final class History
         $pdo = $this->databaseForVolume((string) $data['volume']);
         $stmt = $pdo->prepare(
             'INSERT INTO items
-             (id, volume, recycle_path, original_path, size, is_dir, owner_uid,
+             (id, volume, recycle_path, original_path, display_name, size, is_dir, owner_uid,
               owner_gid, mode, mtime, deleted_at, state, meta_json)
              VALUES
-             (:id, :volume, :recycle_path, :original_path, :size, :is_dir,
+             (:id, :volume, :recycle_path, :original_path, :display_name, :size, :is_dir,
               :owner_uid, :owner_gid, :mode, :mtime, :deleted_at, :state, :meta_json)'
         );
         $stmt->execute([
@@ -114,6 +126,7 @@ final class History
             ':volume' => $data['volume'],
             ':recycle_path' => $data['recycle_path'],
             ':original_path' => $data['original_path'],
+            ':display_name' => basename((string) $data['original_path']),
             ':size' => $data['size'] ?? 0,
             ':is_dir' => $data['is_dir'] ?? 0,
             ':owner_uid' => $data['owner_uid'] ?? null,
@@ -199,14 +212,26 @@ final class History
         $stmt->execute([':to' => $to, ':id' => $id, ':from' => $from]);
     }
 
-    public function listActive(?string $volume = null, int $limit = 500, int $offset = 0): array
+    public function listActive(
+        ?string $volume = null,
+        int $limit = 500,
+        int $offset = 0,
+        string $sort = 'deleted_at',
+        string $order = 'desc'
+    ): array
     {
-        return $this->queryAcross("state='active'", $volume, $limit, $offset);
+        return $this->queryAcross("state='active'", $volume, $limit, $offset, $sort, $order);
     }
 
-    public function listAll(?string $volume = null, int $limit = 1000, int $offset = 0): array
+    public function listAll(
+        ?string $volume = null,
+        int $limit = 1000,
+        int $offset = 0,
+        string $sort = 'deleted_at',
+        string $order = 'desc'
+    ): array
     {
-        return $this->queryAcross('1=1', $volume, $limit, $offset);
+        return $this->queryAcross('1=1', $volume, $limit, $offset, $sort, $order);
     }
 
     public function listActiveBefore(int $cutoff): array
@@ -255,9 +280,14 @@ final class History
         return $this->aggregate('COUNT(*)', $volume);
     }
 
-    public function countAll(): int
+    public function countAll(?string $volume = null): int
     {
-        return $this->aggregate('COUNT(*)', null, '1=1');
+        return $this->aggregate('COUNT(*)', $volume, '1=1');
+    }
+
+    public function countInactive(?string $volume = null): int
+    {
+        return $this->aggregate('COUNT(*)', $volume, "state IN ('restored','purged')");
     }
 
     public function totalActiveSize(?string $volume = null): int
@@ -399,21 +429,50 @@ final class History
         return $stmt->rowCount() > 0;
     }
 
-    private function queryAcross(string $where, ?string $volume, int $limit, int $offset): array
+    private function queryAcross(
+        string $where,
+        ?string $volume,
+        int $limit,
+        int $offset,
+        string $sort,
+        string $order
+    ): array
     {
         $limit = max(1, min(5000, $limit));
         $offset = max(0, $offset);
+        $sort = in_array($sort, ['name', 'deleted_at', 'size'], true) ? $sort : 'deleted_at';
+        $order = strtolower($order) === 'asc' ? 'asc' : 'desc';
+        $sortSql = match ($sort) {
+            'name' => 'COALESCE(display_name,original_path) COLLATE NOCASE',
+            'size' => 'size',
+            default => 'deleted_at',
+        };
+        $fetchLimit = $limit + $offset;
         $volumes = $volume !== null ? [$volume] : $this->existingVolumes();
         $rows = [];
         foreach ($volumes as $candidate) {
             $pdo = $this->databaseForVolume($candidate, false);
             if ($pdo === null) continue;
-            $stmt = $pdo->prepare("SELECT * FROM items WHERE $where ORDER BY deleted_at DESC LIMIT :limit");
-            $stmt->bindValue(':limit', $limit + $offset, SqliteStatement::PARAM_INT);
+            $stmt = $pdo->prepare(
+                "SELECT * FROM items WHERE $where ORDER BY $sortSql $order,id $order LIMIT :limit"
+            );
+            $stmt->bindValue(':limit', $fetchLimit, SqliteStatement::PARAM_INT);
             $stmt->execute();
             array_push($rows, ...$stmt->fetchAll());
         }
-        usort($rows, fn(array $a, array $b): int => ((int) $b['deleted_at']) <=> ((int) $a['deleted_at']));
+        usort($rows, function (array $a, array $b) use ($sort, $order): int {
+            if ($sort === 'name') {
+                $left = (string) ($a['display_name'] ?? basename((string) ($a['original_path'] ?? '')));
+                $right = (string) ($b['display_name'] ?? basename((string) ($b['original_path'] ?? '')));
+                $comparison = strcasecmp($left, $right);
+            } else {
+                $comparison = ((int) ($a[$sort] ?? 0)) <=> ((int) ($b[$sort] ?? 0));
+            }
+            if ($comparison === 0) {
+                $comparison = strcmp((string) ($a['id'] ?? ''), (string) ($b['id'] ?? ''));
+            }
+            return $order === 'asc' ? $comparison : -$comparison;
+        });
         return array_slice($rows, $offset, $limit);
     }
 
@@ -438,6 +497,7 @@ CREATE TABLE IF NOT EXISTS items (
   volume TEXT NOT NULL,
   recycle_path TEXT NOT NULL,
   original_path TEXT NOT NULL,
+  display_name TEXT,
   size INTEGER NOT NULL DEFAULT 0,
   is_dir INTEGER NOT NULL DEFAULT 0,
   owner_uid INTEGER,
@@ -462,7 +522,8 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY,v TEXT);
-INSERT OR IGNORE INTO meta(k,v) VALUES('schema_version','2');
+INSERT INTO meta(k,v) VALUES('schema_version','3')
+ON CONFLICT(k) DO UPDATE SET v=excluded.v;
 SQL;
     }
 

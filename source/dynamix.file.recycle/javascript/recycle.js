@@ -14,6 +14,24 @@
     var toastEl = null;
     var toastTimer = 0;
 
+    function currentBrowsePath() {
+        try {
+            return new URLSearchParams(window.location.search || '').get('dir') || '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function knownUnsupportedBrowsePath() {
+        var path = currentBrowsePath().replace(/\/+$/, '') || '/';
+        return path === '/' || path === '/mnt' || path === '/boot' || path.indexOf('/boot/') === 0
+            || path === '/mnt/user' || path.indexOf('/mnt/user/') === 0
+            || path === '/mnt/user0' || path.indexOf('/mnt/user0/') === 0
+            || /^\/mnt\/cache[^/]*(?:\/|$)/.test(path)
+            || path === '/mnt/disks' || path.indexOf('/mnt/disks/') === 0
+            || path === '/mnt/remotes' || path.indexOf('/mnt/remotes/') === 0;
+    }
+
     function removeLegacyRowControls() {
         var legacy = document.querySelectorAll('.recycle-slot, .recycle-action');
         for (var index = 0; index < legacy.length; index++) {
@@ -137,7 +155,10 @@
     function setBusy(state, label) {
         busy = state;
         if (!button) return;
-        button.disabled = state || selectedItems().length === 0;
+        var blocked = knownUnsupportedBrowsePath();
+        button.classList.toggle('extra', !blocked);
+        button.disabled = blocked || state || selectedItems().length === 0;
+        button.setAttribute('title', blocked ? t('btnTitleBlocked') : t('btnTitle'));
         button.value = label || t('btnBatch');
     }
 
@@ -152,6 +173,10 @@
 
     function handleBatchRecycle() {
         if (busy) return;
+        if (knownUnsupportedBrowsePath()) {
+            setBusy(false, t('btnBatch'));
+            return;
+        }
         var items = selectedItems();
         if (items.length === 0) {
             showToast(t('noSelection'), true);
@@ -199,10 +224,11 @@
         button = document.createElement('input');
         button.type = 'button';
         button.id = 'recycle-selected-button';
-        button.className = 'dfm_control extra recycle-batch-action';
+        button.className = 'dfm_control recycle-batch-action';
+        if (!knownUnsupportedBrowsePath()) button.classList.add('extra');
         button.value = t('btnBatch');
         button.disabled = true;
-        button.setAttribute('title', t('btnTitle'));
+        button.setAttribute('title', knownUnsupportedBrowsePath() ? t('btnTitleBlocked') : t('btnTitle'));
         button.addEventListener('click', handleBatchRecycle);
         deleteButton.parentNode.insertBefore(button, deleteButton.nextSibling);
         console.info('[Dynamix File Recycle Bin] batch control inserted after Delete', RT.version || 'unknown');

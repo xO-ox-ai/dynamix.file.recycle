@@ -5,12 +5,12 @@
   "category": [
     "Tools"
   ],
-  "description": "A guarded recycle bin for Dynamix File Manager with a validated per-disk/per-dataset allowlist. Supports verified internal /mnt/disk* data drives and local ZFS datasets; user shares, pools, UD/external, remote, boot USB and USB/removable storage are rejected. Bilingual UI (English + Chinese).",
-  "overview": "Adds per-volume recycle bin support to the Unraid Dynamix File Manager, with age/capacity-based maintenance, bilingual UI, and full history tracking. 为 Unraid Dynamix 文件浏览器添加安全回收站：每盘一个 .RecycleBin，带年龄/容量维护策略、中英双语界面与完整历史记录。",
+  "description": "A guarded recycle bin for Unraid's official built-in Dynamix File Manager with a validated per-disk/per-dataset allowlist. It does not intercept SMB, terminal, application, container, or third-party file-manager deletes. Do not manually alter anything inside .RecycleBin. Bilingual UI (English + Chinese).",
+  "overview": "Adds per-volume recycle support to Unraid's official built-in Dynamix File Manager, with age/capacity maintenance and history tracking. 为 Unraid 官方内置 Dynamix 文件浏览器添加按卷隔离的安全回收站、维护策略和历史记录。",
   "icon": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.svg",
   "logo": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.svg",
   "tag": "tools",
-  "version": "2026.07.19l",
+  "version": "2026.07.19m",
   "plugin": "https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg",
   "repo": "https://github.com/xO-ox-ai/dynamix.file.recycle",
   "website": "https://github.com/xO-ox-ai/dynamix.file.recycle",

@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Plugin>
   <Name>Dynamix File Recycle Bin</Name>
-  <Overview>Adds a guarded recycle action and validated per-volume allowlist to Dynamix File Manager for verified internal /mnt/diskN volumes and local ZFS datasets. Each enabled disk or dataset owns its persistent .RecycleBin and SQLite history.</Overview>
+  <Overview>Adds a guarded recycle action and validated per-volume allowlist to Unraid's official built-in Dynamix File Manager for verified internal /mnt/diskN volumes and local ZFS datasets. Each enabled disk or dataset owns its persistent .RecycleBin and SQLite history. Users must not manually alter anything inside .RecycleBin.</Overview>
   <PluginURL>https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.file.recycle.plg</PluginURL>
   <PluginAuthor>xO-ox-ai</PluginAuthor>
   <Support>https://github.com/xO-ox-ai/dynamix.file.recycle/issues</Support>
   <Project>https://github.com/xO-ox-ai/dynamix.file.recycle</Project>
   <ReadMe>https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/README.md</ReadMe>
   <Category>Tools:Utilities</Category>
-  <Beta>true</Beta>
-  <MinVer>7.3.2</MinVer>
+  <Beta>false</Beta>
+  <MinVer>7.2.4</MinVer>
   <Icon>https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.svg</Icon>
   <License>MIT</License>
 </Plugin>

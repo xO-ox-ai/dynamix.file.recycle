@@ -186,24 +186,37 @@ try {
             if (!in_array($state, ['active', 'all'], true)) fail('Invalid state filter.', 400);
             if ($volume !== null && !$c->fs()->isApprovedVolumeRoot($volume)) fail('Invalid volume filter.', 400);
             $includeHistory = $cfg->getHistoryEnabled() && $state === 'all';
-            $limit = max(1, min(2000, (int) ($_POST['limit'] ?? 500)));
+            $sort = (string) ($_POST['sort'] ?? 'deleted_at');
+            $order = strtolower((string) ($_POST['order'] ?? 'desc'));
+            if (!in_array($sort, ['name', 'deleted_at', 'size'], true)) fail('Invalid sort field.', 400);
+            if (!in_array($order, ['asc', 'desc'], true)) fail('Invalid sort direction.', 400);
+            $limit = max(1, min(200, (int) ($_POST['limit'] ?? 50)));
             $offset = max(0, (int) ($_POST['offset'] ?? 0));
 
             if ($includeHistory) {
-                $rows = $c->history()->listAll($volume, $limit, $offset);
+                $rows = $c->history()->listAll($volume, $limit, $offset, $sort, $order);
+                $totalRecords = $c->history()->countAll($volume);
             } else {
-                $rows = $c->history()->listActive($volume, $limit, $offset);
+                $rows = $c->history()->listActive($volume, $limit, $offset, $sort, $order);
+                $totalRecords = $c->history()->countActive($volume);
             }
             foreach ($rows as &$row) {
                 $row['recycle_exists'] = is_string($row['recycle_path'] ?? null)
                     && (file_exists($row['recycle_path']) || is_link($row['recycle_path']));
                 $row['management_enabled'] = $cfg->isVolumeAllowed((string) ($row['volume'] ?? ''));
+                $row['original_exists'] = is_string($row['original_path'] ?? null)
+                    && (file_exists($row['original_path']) || is_link($row['original_path']));
             }
             unset($row);
             respond([
                 'ok' => true,
                 'items' => $rows,
                 'count' => count($rows),
+                'total_records' => $totalRecords,
+                'limit' => $limit,
+                'offset' => $offset,
+                'sort' => $sort,
+                'order' => $order,
                 'state_filter' => $state,
                 'history_enabled' => $cfg->getHistoryEnabled(),
                 'totals' => [
@@ -263,6 +276,8 @@ try {
                 'totals' => [
                     'items' => $c->history()->countActive(),
                     'size' => $c->history()->totalActiveSize(),
+                    'clearable_history' => $c->history()->countInactive(),
+                    'log_bytes' => $logger->sizeBytes(),
                 ],
                 'schema_version' => '1',
             ]);

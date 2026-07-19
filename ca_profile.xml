@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <CommunityApplications>
-  <Profile>Dynamix File Recycle Bin adds a conservative, per-volume recycle workflow to the Unraid Dynamix File Manager. This beta supports internal /mnt/diskN volumes and verified local ZFS datasets only. Support and issue tracking are available on GitHub.</Profile>
+  <Profile>Dynamix File Recycle Bin adds a conservative, per-volume recycle workflow to Unraid's official built-in Dynamix File Manager. It does not intercept deletes performed outside its dedicated DFM Recycle action. It supports internal /mnt/diskN volumes and verified local ZFS datasets only. Users must not manually alter anything inside .RecycleBin.</Profile>
   <Icon>https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/source/dynamix.file.recycle/images/dynamix.file.recycle.svg</Icon>
   <WebPage>https://github.com/xO-ox-ai/dynamix.file.recycle</WebPage>
   <Forum>https://github.com/xO-ox-ai/dynamix.file.recycle/issues</Forum>

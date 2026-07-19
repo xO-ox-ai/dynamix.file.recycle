@@ -21,8 +21,49 @@
 .recycle-bin-toolbar .hint { margin-left: auto; }
 .recycle-bin .hint { color: var(--hint-text, #999); font-size: 12px; }
 
+.recycle-bin-list-controls,
+.recycle-bin-bottom-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin: 0 0 10px;
+}
+.recycle-bin-list-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.recycle-bin-list-controls select { width: auto; min-width: 90px; }
+.recycle-bin-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 180px;
+    margin-left: auto;
+}
+.recycle-bin-page-button {
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 34px;
+    padding: 0 !important;
+}
+.recycle-bin-page-status { min-width: 92px; text-align: center; white-space: nowrap; }
+.recycle-bin-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .recycle-bin-table-wrap { overflow-x: auto; }
-.recycle-bin table { width: 100%; border-collapse: collapse; }
+.recycle-bin table { width: 100%; min-width: 980px; border-collapse: collapse; }
 .recycle-bin th,
 .recycle-bin td {
     padding: 8px 10px;
@@ -31,13 +72,36 @@
     vertical-align: middle;
 }
 .recycle-bin th { background: var(--table-header-bg, #2a2a2a); }
+.recycle-bin-select-column { width: 42px; min-width: 42px; text-align: center !important; }
+.recycle-bin-select-column input { width: 18px; height: 18px; }
 .recycle-bin-path { max-width: 420px; overflow-wrap: anywhere; font-family: monospace; }
-.recycle-bin-actions { min-width: 210px; white-space: nowrap; }
-.recycle-bin-action { margin: 2px 6px 2px 0; }
-.recycle-bin-purge { border-color: #d9534f; }
+.recycle-bin-path a { overflow-wrap: anywhere; }
+.recycle-bin-size { min-width: 86px; white-space: nowrap; }
+.recycle-bin-time { min-width: 150px; white-space: nowrap; }
+.recycle-bin-details { min-width: 260px; max-width: 420px; line-height: 1.35; }
 .recycle-bin-directory { display: block; margin-top: 3px; }
 .recycle-bin-empty { padding: 28px !important; text-align: center !important; color: var(--hint-text, #999); }
-.recycle-bin-note { margin-top: 14px; }
+.recycle-bin-note {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-left: 4px solid #d98c10;
+    color: var(--text-color, inherit);
+}
+.recycle-bin-note .fa { color: #d98c10; }
+.recycle-bin-bottom-bar { margin: 12px 0 0; }
+.recycle-bin-batch-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.recycle-bin-batch-actions button { width: auto !important; min-width: 0 !important; }
+.recycle-bin-danger { border-color: #d9534f; }
+.recycle-bin-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--table-row-line, #333);
+}
+.recycle-bin-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 
 .recycle-bin-badge {
     display: inline-block;
@@ -56,5 +120,30 @@
 .recycle-bin-badge.is-purging { background: #9a6700; }
 
 @media (max-width: 720px) {
-    .recycle-bin-toolbar .hint { flex-basis: 100%; margin-left: 0; }
+    .recycle-bin-toolbar .hint {
+        flex-basis: 100%;
+        margin-left: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .recycle-bin-list-controls label {
+        flex: 1 1 100%;
+        width: 100%;
+    }
+    .recycle-bin-list-controls label select {
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+    }
+    .recycle-bin-pagination {
+        flex: 1 1 100%;
+        width: 100%;
+        min-width: 0;
+        margin-left: 0;
+        justify-content: flex-start;
+    }
+    .recycle-bin-bottom-bar .recycle-bin-pagination {
+        order: 2;
+        justify-content: flex-end;
+    }
 }

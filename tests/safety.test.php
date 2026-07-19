@@ -145,6 +145,7 @@ $testAudit = $testLog . '.audit';
 $clearLogger = new Logger($testLog, $testAudit, 'DEBUG', 1);
 $clearLogger->error('clear_test', '/mnt/disk1/test', 'test entry');
 checkSafety(is_file($testLog) && is_file($testAudit), 'Logger did not create both test logs');
+checkSafety($clearLogger->sizeBytes() > 0, 'Logger did not report the current plugin log size');
 checkSafety($clearLogger->clear() === 2, 'Logger clear did not report both files');
 checkSafety(!is_file($testLog) && !is_file($testAudit), 'Logger clear left a test log behind');
 

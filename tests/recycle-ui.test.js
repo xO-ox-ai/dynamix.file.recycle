@@ -68,7 +68,7 @@ global.window = {
         version: 'test',
         i18n: { btnBatch: 'Recycle', btnTitle: 'Move selected to Recycle Bin' }
     },
-    location: { pathname: '/Main/Browse' },
+    location: { pathname: '/Main/Browse', search: '?dir=%2Fmnt%2Fdisk1' },
     confirm: () => true
 };
 let selectedChecks = [];
@@ -89,7 +89,8 @@ require('../source/dynamix.file.recycle/javascript/recycle.js');
 assert.strictEqual(controls.children[1], nativeDelete, 'native Delete control moved unexpectedly');
 const recycle = controls.children[2];
 assert.strictEqual(recycle.id, 'recycle-selected-button', 'batch recycle control was not created');
-assert.strictEqual(recycle.className, 'dfm_control extra recycle-batch-action', 'native DFM selection classes are missing');
+assert.strictEqual(recycle.className, 'dfm_control recycle-batch-action', 'stable DFM control classes are missing');
+assert.strictEqual(recycle.classList.contains('extra'), true, 'supported path did not opt into native selection state');
 assert.strictEqual(recycle.value, 'Recycle', 'localized batch label is missing');
 assert.strictEqual(recycle.disabled, true, 'batch control must start disabled without a selection');
 assert.strictEqual(recycle.nextSibling, nativeCopy, 'batch recycle control is not immediately after Delete');
@@ -135,6 +136,11 @@ setTimeout(() => {
     setTimeout(() => {
         assert.strictEqual(refreshed, false, 'failed non-mutating recycle unexpectedly refreshed DFM and cleared selection');
         assert.strictEqual(recycle.disabled, false, 'failed non-mutating recycle did not restore the selected action state');
+        global.window.location.search = '?dir=%2Fmnt%2Fuser';
+        recycle.disabled = false;
+        recycle.listeners.click();
+        assert.strictEqual(recycle.disabled, true, 'known unsupported /mnt/user path did not keep Recycle disabled');
+        assert.strictEqual(recycle.classList.contains('extra'), false, 'known unsupported path retained DFM selection-state class');
         console.log('DFM bottom-control contract passed.');
         process.exit(0);
     }, 20);

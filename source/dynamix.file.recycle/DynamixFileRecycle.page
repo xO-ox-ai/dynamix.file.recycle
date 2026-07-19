@@ -24,6 +24,8 @@ foreach ([
     'logLevel' => 'settings.log_level',
     'logRetention' => 'settings.log_retention',
     'logSize' => 'settings.log_size',
+    'currentLogSize' => 'settings.current_log_size',
+    'currentLogSizeHint' => 'settings.current_log_size_hint',
     'logActions' => 'settings.log_actions',
     'history' => 'settings.history',
     'recordHistory' => 'settings.record_history',
@@ -31,6 +33,7 @@ foreach ([
     'historyRetention' => 'settings.history_retention',
     'historyRetentionHint' => 'settings.history_retention_hint',
     'historyActions' => 'settings.history_actions',
+    'clearableHistory' => 'settings.clearable_history',
     'maintenance' => 'settings.maintenance',
     'maintenanceHint' => 'settings.maintenance_hint',
     'ageDays' => 'settings.age_days',
@@ -95,7 +98,7 @@ $recycleSettingsRuntime = [
   <div id="recycle-settings-notice" class="recycle-settings-notice" role="status" aria-live="polite"></div>
 
   <p class="recycle-settings-intro" data-i18n="intro">
-    Move files to a per-volume .RecycleBin instead of deleting them permanently.
+    Adds a separate Recycle action to Unraid's official built-in Dynamix File Manager.
   </p>
 
   <form id="recycle-settings-form" autocomplete="off">
@@ -137,6 +140,8 @@ $recycleSettingsRuntime = [
         <dd><input id="recycle-log-retention" type="number" name="log_retention_days" min="0" max="3650"></dd>
         <dt><label for="recycle-log-size" data-i18n="logSize">Log size cap (MiB)</label></dt>
         <dd><input id="recycle-log-size" type="number" name="log_max_size_mib" min="1" max="100"></dd>
+        <dt data-i18n="currentLogSize">Current plugin log size</dt>
+        <dd><span id="recycle-settings-log-size">0 B</span><span class="hint" data-i18n="currentLogSizeHint">Combined runtime and persistent audit file size, including rotations.</span></dd>
         <dt data-i18n="logActions">Plugin log cleanup</dt>
         <dd>
           <div class="recycle-action-row">
@@ -169,6 +174,8 @@ $recycleSettingsRuntime = [
           </div>
           <span class="hint" data-i18n="clearHistoryHint">Deletes only restored and purged history rows. Active recycle items and files are preserved.</span>
         </dd>
+        <dt data-i18n="clearableHistory">History entries that will be cleared</dt>
+        <dd id="recycle-settings-clearable-history">0</dd>
       </dl>
     </section>
 

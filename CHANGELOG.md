@@ -9,6 +9,31 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19m] - 2026-07-19
+
+### Added
+- Added server-side Recycle Bin pagination with 50 rows by default, selectable
+  25/50/100/200 page sizes, and navigation at the upper and lower right.
+- Added ascending/descending sorting by item name, deletion time or size.
+- Added current-page batch Restore and Permanently Delete controls below the
+  table, plus an actionable-row Select All checkbox.
+- Added links from restored records to their existing location in Unraid's
+  official built-in Dynamix File Manager.
+- Added current plugin file-log size and the number of restored/purged history
+  rows that the History cleanup button will remove.
+- Added a bilingual Plugin Manager description that follows the WebGUI's HTML
+  language, using the `README.md` path read by Unraid's plugin list.
+
+### Changed
+- Replaced raw purge reason codes in the last column with expanded localized
+  explanations and added a state guide below the table.
+- Known unsupported DFM locations such as `/mnt/user*`, `/mnt/cache*`,
+  `/mnt/disks`, `/mnt/remotes` and `/boot` now keep Recycle disabled even when
+  files are selected.
+- Expanded English and Chinese documentation for official DFM-only scope,
+  on-demand `.RecycleBin` creation, exact dataset ownership, manual deletion,
+  retained uninstall settings and reinstall behavior.
+
 ## [2026.07.19l] - 2026-07-19
 
 ### Fixed

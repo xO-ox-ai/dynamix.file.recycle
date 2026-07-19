@@ -126,7 +126,10 @@ check(!str_contains($inject, '$onBrowse'), 'server-side Browse detection can sti
 check(str_contains($inject, "'enabled'    => \$enabled"), 'disabled state prevents the front-end assets from loading for diagnostics');
 check(!str_contains($api, 'assertAdmin'), 'API still relies on a non-portable session shape');
 check(str_contains($js, "window.location.pathname"), 'front-end does not identify the DFM Browse route');
-check(str_contains($js, "className = 'dfm_control extra recycle-batch-action'"), 'DFM batch control does not use native selection-state classes');
+check(str_contains($js, "path === '/mnt/user'"), 'known unsupported user-share browsing does not keep Recycle disabled');
+check(str_contains($js, "button.classList.toggle('extra', !blocked)"), 'known unsupported paths can still be enabled by DFM selection state');
+check(str_contains($js, "className = 'dfm_control recycle-batch-action'"), 'DFM batch control does not use a stable native control class');
+check(str_contains($js, "button.classList.add('extra')"), 'supported DFM paths do not opt into native selection state');
 
 $settingsJs = source('source/dynamix.file.recycle/javascript/settings.js');
 $settingsCss = source('source/dynamix.file.recycle/javascript/settings.css');
@@ -141,15 +144,36 @@ check(str_contains($settingsCss, 'inline-size: fit-content !important'), 'sectio
 check(str_contains($settingsCss, '.recycle-action-row > button.recycle-compact-action'), 'cleanup buttons are not isolated from Unraid grid stretching');
 check(str_contains($settings, 'id="recycle-download-diagnostics"'), 'settings do not expose diagnostic download');
 check(str_contains($settingsJs, "body.append('action', 'diagnostics')"), 'settings diagnostic button does not call the API');
+check(str_contains($settings, 'id="recycle-settings-log-size"'), 'settings do not display current plugin log size');
+check(str_contains($settings, 'id="recycle-settings-clearable-history"'), 'settings do not display clearable history count');
+check(str_contains($api, "'log_bytes' => \$logger->sizeBytes()"), 'settings API omits current plugin log size');
+check(str_contains($api, "'clearable_history' => \$c->history()->countInactive()"), 'settings API omits clearable history count');
 check(str_contains($api, "'supported_volumes' => \$supportedVolumes"), 'settings API does not return validated volumes');
 check(str_contains($api, "case 'clear_logs'"), 'log cleanup API action is missing');
 check(str_contains($api, "case 'clear_history'"), 'history cleanup API action is missing');
 check(str_contains($api, "case 'diagnostics'"), 'diagnostic download API action is missing');
 check(str_contains($api, "'hierarchy' => \$display['hierarchy']"), 'volume hierarchy metadata is missing');
+check(str_contains($api, "['name', 'deleted_at', 'size']"), 'Recycle Bin API sort fields are not strictly allowlisted');
+check(str_contains($api, "min(200, (int) (\$_POST['limit'] ?? 50))"), 'Recycle Bin API does not default to 50 bounded rows');
+check(str_contains($api, "'total_records' => \$totalRecords"), 'Recycle Bin API omits total records for paging');
 
 $binJs = source('source/dynamix.file.recycle/javascript/recycle-bin.js');
 check(str_contains($binJs, "request('list'"), 'Recycle Bin details do not load through the API');
 check(str_contains($binJs, "request(action, { id:"), 'Recycle Bin restore/purge actions are missing');
+check(str_contains($binJs, "limit: String(pageSize)"), 'Recycle Bin list is not paged server-side');
+check(str_contains($binJs, "sort: sortControl.value"), 'Recycle Bin list does not request sorting');
+check(str_contains($binJs, "runBatch('restore')"), 'Recycle Bin batch restore is missing');
+check(str_contains($binJs, "runBatch('purge')"), 'Recycle Bin batch purge is missing');
+check(str_contains($binJs, "'/Main/Browse?dir='"), 'restored paths do not link to the built-in file browser');
+check(str_contains($recyclePage, 'id="recycle-bin-pagination-top"'), 'top-right pagination is missing');
+check(str_contains($recyclePage, 'id="recycle-bin-pagination-bottom"'), 'bottom-right pagination is missing');
+check(str_contains($recyclePage, 'id="recycle-bin-select-all"'), 'Recycle Bin page selection is missing');
+
+$pluginReadme = source('source/dynamix.file.recycle/README.md');
+check(str_contains($pluginReadme, 'html:lang(zh)'), 'installed plugin description does not follow the Unraid page language');
+check(str_contains($pluginReadme, 'official built-in Dynamix File Manager'), 'installed plugin description omits the official file-browser scope');
+check(str_contains($history, "'name' => 'COALESCE(display_name,original_path) COLLATE NOCASE'"), 'history does not support server-side name sorting');
+check(str_contains($history, 'public function countInactive'), 'settings cannot count clearable history rows');
 
 $diagnostics = source('source/dynamix.file.recycle/include/Diagnostics.php');
 check(str_contains($diagnostics, "'pdo_drivers' => \\PDO::getAvailableDrivers()"), 'diagnostics omit PDO driver availability');

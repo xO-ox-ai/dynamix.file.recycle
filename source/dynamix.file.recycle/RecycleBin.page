@@ -28,6 +28,27 @@ foreach ([
     'size' => 'bin.size',
     'deletedAt' => 'bin.deleted_at',
     'actions' => 'bin.actions',
+    'selectAll' => 'bin.select_all',
+    'selected' => 'bin.selected',
+    'sortBy' => 'bin.sort_by',
+    'sortName' => 'bin.sort_name',
+    'sortTime' => 'bin.sort_time',
+    'sortSize' => 'bin.sort_size',
+    'ascending' => 'bin.ascending',
+    'descending' => 'bin.descending',
+    'rowsPerPage' => 'bin.rows_per_page',
+    'previous' => 'bin.previous',
+    'next' => 'bin.next',
+    'pageStatus' => 'bin.page_status',
+    'batchRestore' => 'bin.batch_restore',
+    'batchPurge' => 'bin.batch_purge',
+    'confirmBatchRestore' => 'bin.confirm_batch_restore',
+    'confirmBatchPurge' => 'bin.confirm_batch_purge',
+    'batchRestoreDone' => 'bin.batch_restore_done',
+    'batchPurgeDone' => 'bin.batch_purge_done',
+    'batchFailed' => 'bin.batch_failed',
+    'browseOriginal' => 'bin.browse_original',
+    'legend' => 'bin.legend',
     'empty' => 'bin.empty',
     'active' => 'bin.active',
     'restored' => 'bin.restored',
@@ -40,6 +61,18 @@ foreach ([
     'purge' => 'bin.purge',
     'managementDisabled' => 'bin.management_disabled',
     'missing' => 'bin.missing',
+    'detailActive' => 'bin.detail_active',
+    'detailRestored' => 'bin.detail_restored',
+    'detailPurgedManual' => 'bin.detail_purged_manual',
+    'detailPurgedAge' => 'bin.detail_purged_age',
+    'detailPurgedCapacity' => 'bin.detail_purged_capacity',
+    'detailPurgedEmpty' => 'bin.detail_purged_empty',
+    'detailPurgedMissing' => 'bin.detail_purged_missing',
+    'detailRecoveredPurge' => 'bin.detail_recovered_purge',
+    'detailPending' => 'bin.detail_pending',
+    'detailRestoring' => 'bin.detail_restoring',
+    'detailPurging' => 'bin.detail_purging',
+    'detailUnknown' => 'bin.detail_unknown',
     'confirmRestore' => 'bin.confirm_restore',
     'confirmPurge' => 'bin.confirm_purge',
     'restoreDone' => 'bin.restore_done',
@@ -69,26 +102,68 @@ $recycleBinRuntime = [
     <span id="recycle-bin-summary" class="hint"></span>
   </div>
 
+  <div class="recycle-bin-list-controls">
+    <label><span data-i18n="sortBy">Sort by</span>
+      <select id="recycle-bin-sort">
+        <option value="name" data-i18n="sortName">Name</option>
+        <option value="deleted_at" data-i18n="sortTime">Deleted time</option>
+        <option value="size" data-i18n="sortSize">Size</option>
+      </select>
+    </label>
+    <label><span class="recycle-bin-visually-hidden" data-i18n="sortBy">Sort by</span>
+      <select id="recycle-bin-order">
+        <option value="asc" data-i18n="ascending">Ascending</option>
+        <option value="desc" data-i18n="descending">Descending</option>
+      </select>
+    </label>
+    <label><span data-i18n="rowsPerPage">Rows per page</span>
+      <select id="recycle-bin-page-size">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="200">200</option>
+      </select>
+    </label>
+    <div id="recycle-bin-pagination-top" class="recycle-bin-pagination"></div>
+  </div>
+
   <div class="recycle-bin-table-wrap">
     <table id="recycle-bin-table">
       <thead>
         <tr>
+          <th class="recycle-bin-select-column"><input type="checkbox" id="recycle-bin-select-all" title="Select all"></th>
           <th data-i18n="state">State</th>
           <th data-i18n="name">Name</th>
           <th data-i18n="originalPath">Original path</th>
           <th data-i18n="volume">Volume</th>
           <th data-i18n="size">Size</th>
           <th data-i18n="deletedAt">Deleted at</th>
-          <th data-i18n="actions">Actions</th>
+          <th data-i18n="actions">Action details</th>
         </tr>
       </thead>
       <tbody id="recycle-bin-body">
-        <tr><td colspan="7" class="recycle-bin-empty" data-i18n="loading">Loading recycle records...</td></tr>
+        <tr><td colspan="8" class="recycle-bin-empty" data-i18n="loading">Loading recycle records...</td></tr>
       </tbody>
     </table>
   </div>
 
-  <p class="hint recycle-bin-note" data-i18n="note">Only entries tracked in the per-volume SQLite databases are shown.</p>
+  <div class="recycle-bin-bottom-bar">
+    <div class="recycle-bin-batch-actions">
+      <button type="button" id="recycle-bin-batch-restore" disabled><i class="fa fa-undo" aria-hidden="true"></i> <span data-i18n="batchRestore">Restore selected</span></button>
+      <button type="button" id="recycle-bin-batch-purge" class="recycle-bin-danger" disabled><i class="fa fa-trash" aria-hidden="true"></i> <span data-i18n="batchPurge">Permanently delete selected</span></button>
+      <span id="recycle-bin-selected" class="hint">0 selected</span>
+    </div>
+    <div id="recycle-bin-pagination-bottom" class="recycle-bin-pagination"></div>
+  </div>
+
+  <div class="recycle-bin-legend">
+    <strong data-i18n="legend">State guide</strong>
+    <span><span class="recycle-bin-badge is-active" data-i18n="active">Active</span> <span data-i18n="detailActive">The item is in the Recycle Bin and can be restored or permanently deleted.</span></span>
+    <span><span class="recycle-bin-badge is-restored" data-i18n="restored">Restored</span> <span data-i18n="detailRestored">The item has been restored; the row is retained as history.</span></span>
+    <span><span class="recycle-bin-badge is-purged" data-i18n="purged">Purged</span> <span data-i18n="detailPurgedManual">The item was permanently deleted and cannot be restored.</span></span>
+  </div>
+
+  <p class="recycle-bin-note"><i class="fa fa-warning" aria-hidden="true"></i> <span data-i18n="note">Do not manually change anything inside .RecycleBin.</span></p>
 </div>
 
 <script>

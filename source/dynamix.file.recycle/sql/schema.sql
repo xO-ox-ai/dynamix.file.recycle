@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS items (
     volume        TEXT NOT NULL,
     recycle_path  TEXT NOT NULL,
     original_path TEXT NOT NULL,
+    display_name  TEXT,
     size          INTEGER NOT NULL DEFAULT 0,
     is_dir        INTEGER NOT NULL DEFAULT 0,
     owner_uid     INTEGER,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS items (
     meta_json     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_items_state_deleted ON items(state, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_items_display_name ON items(display_name);
 
 CREATE TABLE IF NOT EXISTS events (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,4 +36,5 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
-INSERT OR IGNORE INTO meta(k, v) VALUES('schema_version', '2');
+INSERT INTO meta(k, v) VALUES('schema_version', '3')
+ON CONFLICT(k) DO UPDATE SET v=excluded.v;

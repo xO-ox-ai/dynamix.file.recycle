@@ -2,10 +2,16 @@
 
 > Chinese documentation: [README.zh.md](README.zh.md)
 
-A guarded recycle bin for the Unraid Dynamix File Manager (DFM). It adds a
+A guarded recycle bin for Unraid's official built-in Dynamix File Manager
+(DFM). It adds a
 selection-aware **Recycle** action immediately after DFM's native Delete
 button and atomically renames selected files or directories into each owning
 volume's `.RecycleBin`.
+
+This plugin only handles operations started with its separate **Recycle**
+button in the built-in file browser. DFM's native **Delete** button remains a
+permanent delete. Deletion through SMB/NFS, a terminal, Docker containers,
+applications, scripts, or third-party file managers is not intercepted.
 
 The current release deliberately supports only simple, verifiable storage
 layouts. The server checks every selected item before confirmation and shows a
@@ -94,6 +100,25 @@ When a ZFS dataset is nested below an array disk or another local pool, files
 are always recycled into that exact dataset's `.RecycleBin`; the parent volume
 is never used as a fallback.
 
+### Important behavior
+
+- `.RecycleBin` is created on demand under the exact enabled disk or ZFS
+  dataset only when its first recycle operation reaches database setup.
+  Installing the plugin or enabling a volume does not pre-create the folder.
+- Every child ZFS dataset is an independent management boundary. Enabling its
+  parent disk or pool does not implicitly enable the child dataset.
+- Disabling a volume blocks recycle, restore, purge and maintenance there; it
+  does not delete existing recycled files or history.
+- Restored history rows link back to their existing location in Unraid's
+  built-in file browser. A missing original path remains plain text.
+- The list supports current-page batch selection, server-side paging, and
+  name/time/size sorting. Historical rows cannot be selected for mutation.
+- **Do not manually move, rename, delete or edit anything inside
+  `.RecycleBin`.** This includes recycled items and the hidden SQLite,
+  `-wal` and `-shm` files. Manual changes can detach files from their records
+  or damage recovery history. Use the plugin's Recycle Bin page for every
+  restore and permanent deletion.
+
 Example layout:
 
 | Original path | Recycled path | Database |
@@ -121,7 +146,8 @@ The runtime log is stored in RAM and is lost on reboot. Errors are also copied
 to the bounded persistent audit log, while operation records live in each
 volume's SQLite database.
 
-Manually deleting a dataset's `.RecycleBin` permanently loses every contained
+If this warning is ignored, manually deleting a dataset's `.RecycleBin`
+permanently loses every contained
 item and that dataset's SQLite history. The plugin has no daemon holding the
 deleted database; a later recycle operation recreates an empty directory and
 schema and continues normally. Deleting it concurrently with an operation can
@@ -147,6 +173,10 @@ Uninstall removes plugin code, scheduled tasks and volatile logs. It preserves
 settings, the persistent audit log, and every `.RecycleBin` directory with its
 SQLite database. Inspect those directories manually before deleting them if a
 complete data wipe is required.
+
+Reinstalling after removal therefore reuses the previous allowlist and other
+settings; it is not treated as a first installation with every supported
+volume selected.
 
 ## Security
 

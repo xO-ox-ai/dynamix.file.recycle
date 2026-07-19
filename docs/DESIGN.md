@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19l` architecture and its conservative
+This document describes the `2026.07.19m` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -47,6 +47,13 @@ Settings and recycle details are separate static page shells. Settings is
 registered as a tile under User Programs (`Menu="Utilities"`); recycle details is under
 Tools -> Disk Utilities. Both load storage state through `api.php` after the
 page has rendered, so backend failures remain visible as inline errors.
+
+The details page uses server-side pagination with a default of 50 rows and a
+bounded maximum of 200. Sorting is restricted to name, deletion time or size,
+in ascending or descending order. Only actionable rows on the current page can
+be selected; restore and permanent-delete commands are issued sequentially
+from the bottom action bar. Restored paths link back to the official built-in
+Dynamix File Manager when the original location still exists.
 
 Failed operations that have not moved any item preserve the current DFM
 selection and restore the Recycle button state. A refresh occurs only after a

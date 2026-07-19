@@ -75,6 +75,18 @@ if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.re
 if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.recycle/VERSION' })) {
     throw 'Package is missing its runtime VERSION file.'
 }
+if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.recycle/DynamixFileRecycle.page' })) {
+    throw 'Package is missing its Disk Utilities settings page.'
+}
+if (!($entries | Where-Object { $_ -eq 'usr/local/emhttp/plugins/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt' })) {
+    throw 'Package is missing its Chinese Unraid menu translation.'
+}
+if ($entries | Where-Object { $_ -in @(
+    'usr/local/emhttp/plugins/dynamix.file.recycle/settings.page',
+    'usr/local/emhttp/plugins/dynamix.file.recycle/README.page'
+) }) {
+    throw 'Package still contains a legacy duplicate menu page.'
+}
 if ($entries | Where-Object { $_ -like 'usr/local/emhttp/plugins/dynamix.file.recycle/cron/*' }) {
     throw 'Package still contains an unconditional maintenance cron payload.'
 }

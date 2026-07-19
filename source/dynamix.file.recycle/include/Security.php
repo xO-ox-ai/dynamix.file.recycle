@@ -1,8 +1,7 @@
 <?php
 /**
- * Security.php — auth and path safety helpers.
+ * Security.php — path and request-safety helpers.
  *
- *   - assertAdmin()    require an authenticated admin session (Unraid)
  *   - assertEnabled()  require the plugin master switch to be on
  *   - assertPathInScope($absPath)   require a path within a v1 volume
  *   - issueInspectionToken()        sign the currently inspected inode state
@@ -10,9 +9,9 @@
  *
  * Tokens are signed with HMAC-SHA256 over the absolute path using a per-host
  * volatile secret stored under STATE_DIR. They are not authorization by
- * themselves: the server repeats admin, path, topology and inode checks on
- * every request. Tokens expire after two minutes and intentionally become
- * invalid after reboot.
+ * themselves: Unraid authenticates the WebGUI request and validates its CSRF
+ * token, while the plugin repeats path, topology and inode checks. Tokens
+ * expire after two minutes and intentionally become invalid after reboot.
  */
 
 declare(strict_types=1);
@@ -27,29 +26,6 @@ final class Security
     public function __construct(FsInspector $fs)
     {
         $this->fs = $fs;
-    }
-
-    /**
-     * Require an authenticated admin user. Unraid exposes this via the session
-     * and the `is_user_admin()` helper in newer versions; we fall back to
-     * the legacy `$_SESSION['gui']['user']` shape used by emhttp.
-     *
-     * @throws \RuntimeException when not admin
-     */
-    public function assertAdmin(): void
-    {
-        $ok = false;
-        if (function_exists('is_user_admin')) {
-            $ok = (bool) is_user_admin();
-        }
-        if (!$ok) {
-            $user = $_SESSION['gui']['user'] ?? $_SESSION['user'] ?? '';
-            $role = $_SESSION['gui']['role'] ?? '';
-            $ok = ($user === 'root' || $role === 'admin' || $user === 'admin');
-        }
-        if (!$ok) {
-            throw new \RuntimeException('Administrator privileges required.', 403);
-        }
     }
 
     public function assertEnabled(Config $cfg): void
@@ -196,7 +172,6 @@ final class Security
         $allowed = [
             'global' => [
                 'enabled'           => 'boolString',
-                'language'          => 'enum:auto,en_US,zh_CN',
                 'log_level'         => 'enum:ERROR,WARN,INFO,DEBUG',
                 'log_retention_days'=> 'int:0:3650',
                 'log_max_size_mib'  => 'int:1:100',

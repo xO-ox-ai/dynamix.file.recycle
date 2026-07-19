@@ -3,8 +3,8 @@
   Dynamix File Recycle Bin — plugin icon.
   Used by:
     - Community Applications (plugins.json -> icon/logo)
-    - Unraid menu (the page Menu field references icon-u-recycle which is
-      already provided by Dynamix; this PNG is a fallback / external icon).
+    - Community Applications and repository branding. The Unraid menu uses
+      its bundled Font Awesome `recycle` icon.
   Source SVG kept in the repo so the PNG can be regenerated at any resolution.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">

@@ -96,8 +96,6 @@ try {
     if (preg_match('/\A(?:inspect|recycle|restore|purge|empty|list|status|config_get|config_save|maintain_now)\z/', $action) !== 1) {
         fail('Unknown action.', 400, 'unknown_action');
     }
-    $sec->assertAdmin();
-
     // For all mutating actions we require the plugin to be enabled.
     $mutatingActions = ['inspect', 'recycle', 'restore', 'purge', 'empty', 'maintain_now'];
     if (in_array($action, $mutatingActions, true)) {

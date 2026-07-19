@@ -9,11 +9,8 @@
  * Format: plain "key=value" lines. Lines starting with ; or # are comments.
  * Keys are dotted identifiers, values are UTF-8 strings.
  *
- * Language resolution order:
- *   1. Configured language in the plugin cfg (auto | en_US | zh_CN).
- *   2. "auto" -> read Unraid system language from /usr/local/emhttp/state/var.ini
- *      (var.ini key `locale` or `lang`).
- *   3. Fallback to en_US, and any missing key falls back to en_US as well.
+ * Language resolution follows the current Unraid WebGUI session. Missing keys
+ * and unsupported locales fall back to en_US.
  */
 
 declare(strict_types=1);
@@ -63,17 +60,24 @@ final class I18n
         return vsprintf($v, $args);
     }
 
-    /**
-     * Detect Unraid system language. Reads var.ini (parse_ini_string safe).
-     */
+    /** Detect the current Unraid WebGUI language. */
     private function detectSystem(): string
     {
-        $varIni = '/usr/local/emhttp/state/var.ini';
-        if (!is_file($varIni)) {
-            return 'en_US';
+        $lang = $_SESSION['locale'] ?? $GLOBALS['locale'] ?? '';
+        if ($lang === '') {
+            foreach (['/var/local/emhttp/var.ini', '/usr/local/emhttp/state/var.ini'] as $varIni) {
+                if (!is_file($varIni)) {
+                    continue;
+                }
+                $parsed = @parse_ini_string((string) file_get_contents($varIni));
+                if (is_array($parsed)) {
+                    $lang = $parsed['locale'] ?? $parsed['lang'] ?? $parsed['language'] ?? '';
+                }
+                if ($lang !== '') {
+                    break;
+                }
+            }
         }
-        $parsed = @parse_ini_string((string) file_get_contents($varIni));
-        $lang = $parsed['locale'] ?? $parsed['lang'] ?? $parsed['language'] ?? '';
         $lang = strtolower(trim((string) $lang));
         if (str_starts_with($lang, 'zh')) {
             return 'zh_CN';

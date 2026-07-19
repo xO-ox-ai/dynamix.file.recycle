@@ -59,6 +59,7 @@ $patch = $security->sanitizeConfigPatch([
     'unknown' => ['dangerous' => '1'],
 ]);
 checkSafety(($patch['global']['enabled'] ?? '') === '1', 'Boolean config sanitization failed');
+checkSafety(!isset($patch['global']['language']), 'API can still override the Unraid system language');
 checkSafety(($patch['maintenance']['age_days'] ?? '') === '168', 'Integer config sanitization failed');
 checkSafety(!isset($patch['unknown']), 'Unknown config section survived sanitization');
 checkSafety($cfg->getAllowedVolumes() === null, 'Default volume policy must allow all currently supported volumes');

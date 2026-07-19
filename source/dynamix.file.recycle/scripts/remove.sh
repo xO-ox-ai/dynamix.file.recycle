@@ -19,6 +19,10 @@ fi
 PLUGIN_DIR="/usr/local/emhttp/plugins/dynamix.file.recycle"
 rm -rf "$PLUGIN_DIR"
 
+# Remove only this plugin's global WebGUI translation and its compiled cache.
+rm -f /usr/local/emhttp/languages/zh_CN/dynamix.file.recycle.txt
+rm -f /usr/local/emhttp/languages/zh_CN/dynamix.file.recycle.dot
+
 # 3. Remove volatile cache and locks only. Configuration, persistent audit and
 #    per-volume SQLite databases remain recoverable after uninstall.
 rm -rf /usr/local/emhttp/state/plugins/dynamix.file.recycle

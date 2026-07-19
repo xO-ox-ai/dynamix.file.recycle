@@ -20,4 +20,25 @@ foreach ($english as $key => $value) {
         throw new RuntimeException("Empty localization value: $key");
     }
 }
+
+require_once dirname(__DIR__) . '/source/dynamix.file.recycle/include/I18n.php';
+
+$_SESSION['locale'] = 'zh_CN';
+$systemChinese = new \DynamixFileRecycle\I18n($root, 'auto');
+if ($systemChinese->lang() !== 'zh_CN' || $systemChinese->t('btn.title') !== '移入回收站') {
+    throw new RuntimeException('Chinese Unraid session locale was not followed.');
+}
+
+$_SESSION['locale'] = 'en_US';
+$systemEnglish = new \DynamixFileRecycle\I18n($root, 'auto');
+if ($systemEnglish->lang() !== 'en_US' || $systemEnglish->t('btn.title') !== 'Move to Recycle Bin') {
+    throw new RuntimeException('English Unraid session locale was not followed.');
+}
+
+$menuFile = dirname(__DIR__) . '/source/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt';
+$menuTranslations = parse_ini_file($menuFile, false, INI_SCANNER_RAW);
+if (!is_array($menuTranslations)
+    || ($menuTranslations['Dynamix File Recycle Bin'] ?? '') !== '文件回收站') {
+    throw new RuntimeException('Unraid menu translation file is invalid.');
+}
 echo "Localization contract tests passed.\n";

@@ -1,5 +1,6 @@
 Menu='Buttons:5'
 Title='Dynamix File Recycle Bin'
+Link='recycle-runtime-hook'
 ---
 <?php
 /**
@@ -20,7 +21,6 @@ Title='Dynamix File Recycle Bin'
  *   - lang        string   resolved language code
  *   - i18n        object   translations the JS needs
  *   - enabled     bool     master switch
- *   - browse      bool     whether we are currently on a Browse page
  *
  * The script itself is loaded from javascript/recycle.js and is intentionally
  * self-contained (no jQuery dependency beyond what DFM already pulls in).
@@ -35,17 +35,10 @@ require_once $bootFile;
 
 use function DynamixFileRecycle\boot;
 
-// Only emit on Browse pages. $myPage is provided by DefaultPageLayout.php.
-$onBrowse = isset($myPage) && is_array($myPage) && (($myPage['name'] ?? '') === 'Browse');
-// Also accept the case where we are on /Main/Browse (URL-based).
-if (!$onBrowse) {
-    $req = $_SERVER['REQUEST_URI'] ?? '';
-    if (preg_match('#/Browse(\?|$)#', $req)) {
-        $onBrowse = true;
-    }
-}
-if (!$onBrowse) {
-    return;
+// Load the title translation before Unraid builds its menu panels. The
+// front-end itself decides whether the current browser URL is a DFM page.
+if (function_exists('parse_plugin')) {
+    parse_plugin('dynamix.file.recycle');
 }
 
 $c = boot();
@@ -76,7 +69,6 @@ $runtime = [
     'apiBase'    => $pluginRoot . '/api.php',
     'lang'       => $i18n->lang(),
     'enabled'    => true,
-    'browse'     => true,
     'history'    => $cfg->getHistoryEnabled(),
     'i18n' => [
         'btnTitle'         => $i18n->t('btn.title'),
@@ -115,8 +107,8 @@ $runtimeJson = json_encode(
         | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
 );
 ?>
-<link rel="stylesheet" href="<?= htmlspecialchars($pluginRoot . '/javascript/recycle.css', ENT_QUOTES) ?>" data-recycle-asset="css">
+<link rel="stylesheet" href="<?autov('/plugins/dynamix.file.recycle/javascript/recycle.css')?>" data-recycle-asset="css">
 <script>
 window.__recycleRuntime = <?= $runtimeJson ?>;
 </script>
-<script src="<?= htmlspecialchars($pluginRoot . '/javascript/recycle.js', ENT_QUOTES) ?>" data-recycle-asset="js"></script>
+<script src="<?autov('/plugins/dynamix.file.recycle/javascript/recycle.js')?>" data-recycle-asset="js"></script>

@@ -60,8 +60,9 @@ https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.fil
 ```
 
 The Plugin Manager downloads the versioned package, verifies its SHA-256
-digest and runs the install hook. Open **Settings -> Dynamix File Recycle Bin**
-after installation to review the master switch and maintenance policy.
+digest and runs the install hook. Open **Tools -> Disk Utilities -> Dynamix
+File Recycle Bin** after installation to review the master switch and
+maintenance policy.
 
 Command-line installation uses the same official Plugin Manager path:
 
@@ -76,7 +77,8 @@ Command-line installation uses the same official Plugin Manager path:
 2. Click the recycle icon beside a file or directory.
 3. The server checks the current path, mount, filesystem and backing device.
 4. Confirm only after the check succeeds.
-5. Open **Tools -> Recycle Bin** to restore or permanently purge tracked items.
+5. Open **Tools -> Disk Utilities -> Dynamix File Recycle Bin**, then use
+   **Open Recycle Bin** to restore or permanently purge tracked items.
 
 The Settings page lists every volume that currently passes the backend safety
 checks. All are selected on first install. Saving converts that initial policy

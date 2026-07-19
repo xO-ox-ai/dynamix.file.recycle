@@ -37,7 +37,7 @@ final class Container
     {
         return $this->i18n ??= new I18n(
             ROOT . '/languages',
-            $this->config()->getLanguage()
+            'auto'
         );
     }
 

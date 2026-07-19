@@ -68,9 +68,38 @@ check(!str_contains($restorer, 'recursiveCopy'), 'restorer still contains cross-
 check(str_contains($recycler, 'verifyInspectionToken'), 'recycle does not bind to the inspected inode state');
 check(str_contains($recycler, 'isVolumeAllowed'), 'recycler does not enforce the configured volume allowlist');
 
-$settings = source('source/dynamix.file.recycle/settings.page');
+$settings = source('source/dynamix.file.recycle/DynamixFileRecycle.page');
 check(str_contains($settings, 'allowed_volumes[]'), 'settings page does not expose per-volume management switches');
 check(str_contains($settings, 'supportedVolumes()'), 'volume switches are not built from currently supported volumes');
+check(str_contains($settings, 'Menu="DiskUtilities"'), 'plugin tile is not registered under Disk Utilities');
+check(str_contains($settings, 'Title="Dynamix File Recycle Bin"'), 'plugin title is not a translatable English key');
+check(str_contains($settings, 'Icon="recycle"'), 'plugin tile does not use a valid Unraid icon');
+check(!str_contains($settings, 'name="language"'), 'settings page still overrides the Unraid system language');
+check(!str_contains($settings, 'assertAdmin'), 'settings page still relies on a non-portable session shape');
+check(!is_file($root . '/source/dynamix.file.recycle/settings.page'), 'legacy settings route still exists');
+check(!is_file($root . '/source/dynamix.file.recycle/README.page'), 'legacy About menu page still exists');
+
+$recyclePage = source('source/dynamix.file.recycle/RecycleBin.page');
+check(!preg_match('/\AMenu=/m', $recyclePage), 'Recycle Bin helper route is still exposed as a second menu tile');
+check(!str_contains($recyclePage, 'assertAdmin'), 'Recycle Bin page still relies on a non-portable session shape');
+
+$inject = source('source/dynamix.file.recycle/RecycleInject.page');
+check(str_contains($inject, "parse_plugin('dynamix.file.recycle')"), 'Unraid menu translations are not loaded');
+check(str_contains($inject, "Link='recycle-runtime-hook'"), 'runtime hook can appear as an unwanted navigation button');
+check(substr_count($inject, 'autov(') === 2, 'front-end assets do not use Unraid cache busting');
+check(!str_contains($inject, '$onBrowse'), 'server-side Browse detection can still suppress the DFM button');
+check(!str_contains($api, 'assertAdmin'), 'API still relies on a non-portable session shape');
+check(str_contains($js, "window.location.pathname"), 'front-end does not identify the DFM Browse route');
+check(str_contains($js, "fa fa-trash-o recycle-icon"), 'DFM button does not use the bundled Unraid icon font');
+
+$menuLanguage = source('source/dynamix.file.recycle/unraid-language/zh_CN/dynamix.file.recycle.txt');
+check(str_contains($menuLanguage, 'Dynamix File Recycle Bin=文件回收站'), 'Chinese Unraid menu translation is missing');
+$install = source('source/dynamix.file.recycle/scripts/install.sh');
+$remove = source('source/dynamix.file.recycle/scripts/remove.sh');
+check(str_contains($install, 'languages/zh_CN'), 'install hook does not register the Chinese menu translation');
+check(str_contains($install, 'dynamix.file.recycle.dot'), 'install hook does not invalidate the Unraid translation cache');
+check(str_contains($remove, 'dynamix.file.recycle.txt'), 'remove hook leaves the global menu translation behind');
+check(str_contains($remove, 'dynamix.file.recycle.dot'), 'remove hook leaves the translation cache behind');
 
 $scheduler = source('source/dynamix.file.recycle/include/Scheduler.php');
 check(str_contains($scheduler, "CFG_DIR . '/dynamix.file.recycle.cron'"), 'schedule is not stored in Unraid plugin config');

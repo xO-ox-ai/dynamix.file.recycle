@@ -1,6 +1,5 @@
-Menu="Tools:70"
-Title="Recycle Bin / 回收站"
-Icon="icon-u-recycle"
+Title="Recycle Bin"
+Icon="recycle"
 ---
 <?php
 /**
@@ -20,7 +19,6 @@ require_once __DIR__ . '/include/Bootstrap.php';
 use function DynamixFileRecycle\boot;
 
 $c = boot();
-$c->security()->assertAdmin();
 $cfg = $c->config();
 $i18n = $c->i18n();
 $fs = $c->fs();
@@ -46,23 +44,29 @@ $activeCount = $history->countActive();
 $totalSize = $history->totalActiveSize();
 $apiBase = '/plugins/dynamix.file.recycle/api.php';
 
+$pick = function (string $en, string $zh) use ($i18n): string {
+    return $i18n->lang() === 'zh_CN' ? $zh : $en;
+};
+$enZh = function (string $en, string $zh) use ($pick): string {
+    return htmlspecialchars($pick($en, $zh), ENT_QUOTES);
+};
 $stateLabel = [
-    'active'   => 'Active / 当前',
-    'restored' => 'Restored / 已还原',
-    'purged'   => 'Purged / 已清理',
-    'pending'  => 'Recovering / 恢复中',
-    'restoring'=> 'Restoring / 正在还原',
-    'purging'  => 'Purging / 正在清理',
+    'active'   => $pick('Active', '当前'),
+    'restored' => $pick('Restored', '已还原'),
+    'purged'   => $pick('Purged', '已清理'),
+    'pending'  => $pick('Recovering', '恢复中'),
+    'restoring'=> $pick('Restoring', '正在还原'),
+    'purging'  => $pick('Purging', '正在清理'),
 ];
 ?>
 <div class="recycle-bin">
-<h2>Recycle Bin / 回收站</h2>
+<h2><?= $enZh('Recycle Bin', '回收站') ?></h2>
 <p class="hint">
-    <?= count($rows) ?> <?= $showHistory ? 'historical' : 'active' ?> records
+    <?= count($rows) ?> <?= $showHistory ? $enZh('historical records', '条历史记录') : $enZh('active records', '条当前记录') ?>
     &nbsp;|&nbsp;
-    <?= $activeCount ?> active items, <?= number_format($totalSize) ?> bytes
+    <?= $activeCount ?> <?= $enZh('active items', '个当前项目') ?>, <?= number_format($totalSize) ?> <?= $enZh('bytes', '字节') ?>
     &nbsp;|&nbsp;
-    <?= $showHistory ? 'history on' : 'history off' ?>
+    <?= $showHistory ? $enZh('history on', '历史记录已启用') : $enZh('history off', '历史记录已关闭') ?>
 </p>
 
 <form id="recycle-batch-form" method="post" action="<?= htmlspecialchars($apiBase, ENT_QUOTES) ?>">
@@ -70,18 +74,18 @@ $stateLabel = [
     <table class="settings" id="recycle-table">
         <thead>
         <tr>
-            <th>State / 状态</th>
-            <th>Name / 名称</th>
-            <th>Original path / 原始路径</th>
-            <th>Volume / 卷</th>
-            <th>Size / 大小</th>
-            <th>Deleted at / 删除时间</th>
-            <th>Actions / 操作</th>
+            <th><?= $enZh('State', '状态') ?></th>
+            <th><?= $enZh('Name', '名称') ?></th>
+            <th><?= $enZh('Original path', '原始路径') ?></th>
+            <th><?= $enZh('Volume', '卷') ?></th>
+            <th><?= $enZh('Size', '大小') ?></th>
+            <th><?= $enZh('Deleted at', '删除时间') ?></th>
+            <th><?= $enZh('Actions', '操作') ?></th>
         </tr>
         </thead>
         <tbody>
         <?php if (!$rows): ?>
-        <tr><td colspan="7" class="empty"><?= $cfg->getHistoryEnabled() ? 'No records / 暂无记录' : 'Recycle bin is empty / 回收站为空' ?></td></tr>
+        <tr><td colspan="7" class="empty"><?= $cfg->getHistoryEnabled() ? $enZh('No records', '暂无记录') : $enZh('Recycle bin is empty', '回收站为空') ?></td></tr>
         <?php else: foreach ($rows as $row): ?>
             <?php
                 $name = basename($row['original_path']);
@@ -93,7 +97,7 @@ $stateLabel = [
                 <td><span class="badge state-<?= htmlspecialchars($row['state'], ENT_QUOTES) ?>"><?= htmlspecialchars($stateLabel[$row['state']] ?? $row['state'], ENT_QUOTES) ?></span></td>
                 <td title="<?= htmlspecialchars($row['recycle_path'], ENT_QUOTES) ?>">
                     <?= htmlspecialchars($name, ENT_QUOTES) ?>
-                    <?php if ((int) $row['is_dir'] === 1): ?><span class="hint">(dir/目录)</span><?php endif; ?>
+                    <?php if ((int) $row['is_dir'] === 1): ?><span class="hint">(<?= $enZh('directory', '目录') ?>)</span><?php endif; ?>
                 </td>
                 <td><code><?= htmlspecialchars($row['original_path'], ENT_QUOTES) ?></code></td>
                 <td><code><?= htmlspecialchars($row['volume'], ENT_QUOTES) ?></code></td>
@@ -101,12 +105,12 @@ $stateLabel = [
                 <td><?= htmlspecialchars(date('Y-m-d H:i:s', (int) $row['deleted_at']), ENT_QUOTES) ?></td>
                 <td class="col-actions">
                     <?php if ($canAct && $recycleExists): ?>
-                    <button type="button" class="btn btn-restore" data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>">Restore / 还原</button>
-                    <button type="button" class="btn btn-purge"  data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>">Purge / 永久删除</button>
+                    <button type="button" class="btn btn-restore" data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>"><?= $enZh('Restore', '还原') ?></button>
+                    <button type="button" class="btn btn-purge"  data-id="<?= htmlspecialchars((string) $row['id'], ENT_QUOTES) ?>"><?= $enZh('Purge', '永久删除') ?></button>
                     <?php elseif (!$managementEnabled && $row['state'] === 'active'): ?>
-                    <span class="hint">management disabled / 管理已关闭</span>
+                    <span class="hint"><?= $enZh('management disabled', '管理已关闭') ?></span>
                     <?php elseif (!$recycleExists && $canAct): ?>
-                    <span class="hint">missing / 缺失</span>
+                    <span class="hint"><?= $enZh('missing', '缺失') ?></span>
                     <?php else: ?>
                     <span class="hint"><?= htmlspecialchars($row['purged_reason'] ?? '', ENT_QUOTES) ?></span>
                     <?php endif; ?>
@@ -118,9 +122,12 @@ $stateLabel = [
 </form>
 
 <p class="hint">
-    Note: this page lists only entries tracked in the SQLite history. Files
-    dropped into <code>.RecycleBin</code> by hand are not shown here. &nbsp;|&nbsp;
-    说明：此页面只显示 SQLite 历史中的条目。手动放入 <code>.RecycleBin</code> 的文件不会显示。
+    <?php if ($i18n->lang() === 'zh_CN'): ?>
+        说明：此页面只显示 SQLite 历史中的条目。手动放入 <code>.RecycleBin</code> 的文件不会显示。
+    <?php else: ?>
+        Note: this page lists only entries tracked in the SQLite history. Files
+        dropped into <code>.RecycleBin</code> by hand are not shown here.
+    <?php endif; ?>
 </p>
 </div>
 
@@ -142,6 +149,8 @@ $stateLabel = [
 (function () {
     var API = <?= json_encode($apiBase, JSON_UNESCAPED_SLASHES) ?>;
     var CSRF = <?= json_encode($csrf, JSON_UNESCAPED_SLASHES) ?>;
+    var CONFIRM_RESTORE = <?= json_encode($pick('Restore this item?', '还原此项？'), JSON_UNESCAPED_UNICODE) ?>;
+    var CONFIRM_PURGE = <?= json_encode($pick('Permanently delete? This cannot be undone.', '永久删除？此操作不可撤销。'), JSON_UNESCAPED_UNICODE) ?>;
 
     function post(action, payload) {
         var body = new URLSearchParams();
@@ -172,12 +181,12 @@ $stateLabel = [
         if (restoreBtn) {
             e.preventDefault();
             var id = restoreBtn.getAttribute('data-id');
-            if (!confirm('Restore this item? / 还原此项？')) return;
+            if (!confirm(CONFIRM_RESTORE)) return;
             post('restore', { id: id }).then(refresh).catch(function (err) { alert(err); });
         } else if (purgeBtn) {
             e.preventDefault();
             var id = purgeBtn.getAttribute('data-id');
-            if (!confirm('Permanently delete? This cannot be undone. / 永久删除？此操作不可撤销。')) return;
+            if (!confirm(CONFIRM_PURGE)) return;
             post('purge', { id: id }).then(refresh).catch(function (err) { alert(err); });
         }
     });

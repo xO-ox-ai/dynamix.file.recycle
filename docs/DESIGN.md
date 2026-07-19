@@ -1,6 +1,6 @@
 # Design: Dynamix File Recycle Bin
 
-This document describes the `2026.07.19b` architecture and its conservative
+This document describes the `2026.07.19c` architecture and its conservative
 storage boundary.
 
 ## 1. Safety model
@@ -131,7 +131,7 @@ saved. The page enumerates `FsInspector::supportedVolumes()` and submits the
 checked roots. The backend revalidates every submitted root and stores a JSON
 array; an unsupported or stale selection rejects the entire save.
 
-An unchecked volume remains queryable in Tools -> Recycle Bin so existing data
+An unchecked volume remains queryable from the hidden Recycle Bin view so existing data
 does not disappear from view. Recycler, restorer, purger and maintenance all
 enforce the allowlist before mutating it.
 

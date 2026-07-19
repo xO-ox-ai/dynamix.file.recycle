@@ -27,7 +27,7 @@
     var RT = window.__recycleRuntime;
     if (!RT) return;                 // plugin not properly bootstrapped.
     if (!RT.enabled) return;          // master switch off; nothing to do.
-    if (!RT.browse) return;           // we only operate on the Browse page.
+    if (!/(?:^|\/)Browse(?:\/|$)/.test(window.location.pathname)) return;
 
     var STATE_IDLE = 'idle';
     var STATE_CHECKING = 'checking';
@@ -113,8 +113,8 @@
         b.setAttribute('aria-label', t('btnTitle'));
         b.setAttribute('title', t('btnTitle'));
         b.setAttribute('data-state', STATE_IDLE);
-        var icon = document.createElement('span');
-        icon.className = 'recycle-icon';
+        var icon = document.createElement('i');
+        icon.className = 'fa fa-trash-o recycle-icon';
         icon.setAttribute('aria-hidden', 'true');
         b.appendChild(icon);
         return b;
@@ -135,7 +135,7 @@
         if (!slot) {
             slot = document.createElement('span');
             slot.className = 'recycle-slot';
-            last.appendChild(slot);
+            last.insertBefore(slot, last.firstChild);
         }
         return slot;
     }

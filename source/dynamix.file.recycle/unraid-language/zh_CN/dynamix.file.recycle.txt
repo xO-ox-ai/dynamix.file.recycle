@@ -1,0 +1,2 @@
+Dynamix File Recycle Bin=文件回收站
+Recycle Bin=回收站

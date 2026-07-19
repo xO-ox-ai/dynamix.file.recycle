@@ -15,7 +15,8 @@
  *       php Bootstrap.php status     print a quick status line
  *
  * This file is safe to require from both web (under emhttp) and CLI contexts.
- * It does NOT perform any CSRF or auth checks — those live in api.php.
+ * Web authentication and CSRF validation are provided by Unraid's emhttp
+ * request pipeline before the plugin entry point runs.
  */
 
 declare(strict_types=1);

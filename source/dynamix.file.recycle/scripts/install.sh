@@ -10,6 +10,7 @@ STATE_DIR="/usr/local/emhttp/state/plugins/dynamix.file.recycle"
 LOG_DIR="$STATE_DIR/logs"
 AUDIT_DIR="$CFG_DIR/logs"
 RUN_DIR="/run/dynamix.file.recycle"
+LANG_DIR="/usr/local/emhttp/languages/zh_CN"
 
 # 1. Persistent config dir (under /boot so it survives reboot).
 mkdir -p "$CFG_DIR"
@@ -21,25 +22,32 @@ fi
 # 2. Volatile cache/runtime plus bounded persistent audit directory.
 install -d -m 0700 "$STATE_DIR" "$LOG_DIR" "$RUN_DIR" "$AUDIT_DIR"
 
-# 3. Initialise runtime state and reconcile any currently available shards.
+# 3. Install the WebGUI menu translation and invalidate Unraid's compiled
+#    translation cache so an upgrade is visible without a reboot.
+install -d -m 0755 "$LANG_DIR"
+install -m 0644 \
+  "$PLUGIN_DIR/unraid-language/zh_CN/dynamix.file.recycle.txt" \
+  "$LANG_DIR/dynamix.file.recycle.txt"
+rm -f "$LANG_DIR/dynamix.file.recycle.dot"
+
+# 4. Initialise runtime state and reconcile any currently available shards.
 if [[ -x /usr/local/bin/php ]]; then
   /usr/local/bin/php "$PLUGIN_DIR/include/Bootstrap.php" init
 fi
 
-# 4. Make the scheduled-cleanup wrapper executable.
+# 5. Make the scheduled-cleanup wrapper executable.
 if [[ -f "$PLUGIN_DIR/scripts/recycle-maintain" ]]; then
   chmod 0755 "$PLUGIN_DIR/scripts/recycle-maintain"
 fi
 
-# 5. Remove unconditional jobs left by pre-2026.07.19b builds.
+# 6. Remove unconditional jobs left by pre-2026.07.19b builds.
 rm -f /etc/cron.hourly/dynamix.file.recycle
 rm -f /etc/logrotate.d/dynamix.file.recycle
 
-# 6. Generate a cron entry only when the user configured a cleanup schedule.
+# 7. Generate a cron entry only when the user configured a cleanup schedule.
 if [[ -x /usr/local/bin/php ]]; then
   /usr/local/bin/php "$PLUGIN_DIR/include/Bootstrap.php" sync-cron
 fi
 
 echo "Dynamix File Recycle Bin installed."
-echo "  Open Tools -> Recycle Bin to browse the bin."
-echo "  Open Settings -> Dynamix File Recycle Bin to enable the feature."
+echo "  Open Tools -> Disk Utilities -> Dynamix File Recycle Bin."

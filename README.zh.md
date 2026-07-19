@@ -55,7 +55,7 @@ https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.fil
 ```
 
 插件管理器会下载带版本号的安装包、验证 SHA-256，然后执行安装钩子。安装完成后，
-请打开 **Settings -> Dynamix File Recycle Bin** 检查总开关和维护策略。
+请打开 **工具 -> Disk Utilities -> 文件回收站** 检查总开关和维护策略。
 
 命令行安装使用同一个官方插件管理器：
 
@@ -70,7 +70,8 @@ https://raw.githubusercontent.com/xO-ox-ai/dynamix.file.recycle/main/dynamix.fil
 2. 点击文件或目录旁的回收图标。
 3. 后端检查当前路径、挂载点、文件系统和底层设备。
 4. 只有检查成功后才确认操作。
-5. 打开 **Tools -> Recycle Bin** 还原或永久清理已记录项目。
+5. 打开 **工具 -> Disk Utilities -> 文件回收站**，再点击 **打开回收站**
+   还原或永久清理已记录项目。
 
 设置页会列出当前通过后端安全检查的全部卷，首次安装时默认全部勾选。第一次保存后，
 配置会变为明确白名单：未勾选卷的历史仍然可见，但该卷上的新回收、还原、永久清理

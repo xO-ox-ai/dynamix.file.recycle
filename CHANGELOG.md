@@ -9,6 +9,20 @@ Versioning follows a calver scheme: `YYYY.MM.DD{a,b,c,...}`.
 
 _Nothing yet._
 
+## [2026.07.19c] - 2026-07-19
+
+### Fixed
+- Moved the plugin's only visible page into **Tools -> Disk Utilities**, using
+  Unraid's bundled recycle icon and the active WebGUI language.
+- Removed the non-portable custom session-role check that could leave the
+  settings and Recycle Bin pages blank on Unraid 7.3.2. Authentication and
+  CSRF validation remain enforced by the Unraid WebGUI request pipeline.
+- Made DFM asset loading independent of brittle server-side page detection,
+  added Unraid cache busting, and replaced the CSP-sensitive SVG mask with the
+  bundled Font Awesome trash icon.
+- Removed the duplicate Tools/About entries and the plugin language override;
+  English and Simplified Chinese now follow the system-selected language.
+
 ## [2026.07.19b] - 2026-07-19
 
 ### Changed
